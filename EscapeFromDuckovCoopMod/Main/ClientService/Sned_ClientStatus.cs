@@ -14,52 +14,51 @@
 // MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
 // GNU Affero General Public License for more details.
 
-namespace EscapeFromDuckovCoopMod
+namespace EscapeFromDuckovCoopMod;
+
+public class Send_ClientStatus : MonoBehaviour
 {
-    public class Send_ClientStatus : MonoBehaviour
+    public static Send_ClientStatus Instance;
+
+    private NetService Service => NetService.Instance;
+    private bool IsServer => Service != null && Service.IsServer;
+    private NetManager netManager => Service?.netManager;
+    private NetDataWriter writer => Service?.writer;
+    private NetPeer connectedPeer => Service?.connectedPeer;
+    private PlayerStatus localPlayerStatus => Service?.localPlayerStatus;
+
+    public void Init()
     {
-        public static Send_ClientStatus Instance;
+        Debug.Log("ModBehaviour Awake");
+        Instance = this;
+    }
 
-        private NetService Service => NetService.Instance;
-        private bool IsServer => Service != null && Service.IsServer;
-        private NetManager netManager => Service?.netManager;
-        private NetDataWriter writer => Service?.writer;
-        private NetPeer connectedPeer => Service?.connectedPeer;
-        private PlayerStatus localPlayerStatus => Service?.localPlayerStatus;
+    public void SendClientStatusUpdate()
+    {
+        if (IsServer || connectedPeer == null) return;
 
-        public void Init()
-        {
-            Debug.Log("ModBehaviour Awake");
-            Instance = this;
-        }
+        localPlayerStatus.CustomFaceJson = CustomFace.LoadLocalCustomFaceJson();
+        var equipmentList = LoaclPlayerManager.Instance.GetLocalEquipment();
+        var weaponList = LoaclPlayerManager.Instance.GetLocalWeapons();
 
-        public void SendClientStatusUpdate()
-        {
-            if (IsServer || connectedPeer == null) return;
+        writer.Reset();
+        writer.Put((byte)Op.CLIENT_STATUS_UPDATE); // opcode
+        writer.Put(localPlayerStatus.EndPoint);
+        writer.Put(localPlayerStatus.PlayerName);
+        writer.Put(localPlayerStatus.IsInGame);
+        writer.PutVector3(localPlayerStatus.Position);
+        writer.PutQuaternion(localPlayerStatus.Rotation);
 
-            localPlayerStatus.CustomFaceJson = CustomFace.LoadLocalCustomFaceJson();
-            var equipmentList = LoaclPlayerManager.Instance.GetLocalEquipment();
-            var weaponList = LoaclPlayerManager.Instance.GetLocalWeapons();
+        writer.Put(localPlayerStatus?.SceneId ?? string.Empty);
 
-            writer.Reset();
-            writer.Put((byte)Op.CLIENT_STATUS_UPDATE); // opcode
-            writer.Put(localPlayerStatus.EndPoint);
-            writer.Put(localPlayerStatus.PlayerName);
-            writer.Put(localPlayerStatus.IsInGame);
-            writer.PutVector3(localPlayerStatus.Position);
-            writer.PutQuaternion(localPlayerStatus.Rotation);
+        writer.Put(localPlayerStatus.CustomFaceJson ?? "");
 
-            writer.Put(localPlayerStatus?.SceneId ?? string.Empty);
+        writer.Put(equipmentList.Count);
+        foreach (var e in equipmentList) e.Serialize(writer);
 
-            writer.Put(localPlayerStatus.CustomFaceJson ?? "");
+        writer.Put(weaponList.Count);
+        foreach (var w in weaponList) w.Serialize(writer);
 
-            writer.Put(equipmentList.Count);
-            foreach (var e in equipmentList) e.Serialize(writer);
-
-            writer.Put(weaponList.Count);
-            foreach (var w in weaponList) w.Serialize(writer);
-
-            connectedPeer.Send(writer, DeliveryMethod.ReliableOrdered);
-        }
+        connectedPeer.Send(writer, DeliveryMethod.ReliableOrdered);
     }
 }

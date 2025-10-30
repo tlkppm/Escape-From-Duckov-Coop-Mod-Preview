@@ -14,30 +14,29 @@
 // MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
 // GNU Affero General Public License for more details.
 
-namespace EscapeFromDuckovCoopMod
-{
-    public class WeaponTool
-    {
-        private void TryStartVisualRecoil(ItemAgent_Gun gun)
-        {
-            if (!gun) return;
-            try
-            {
-                Traverse.Create(gun).Method("StartVisualRecoil").GetValue();
-                return;
-            }
-            catch
-            {
-            }
+namespace EscapeFromDuckovCoopMod;
 
-            try
-            {
-                // 兜底：等价于 StartVisualRecoil() 内部把 _recoilBack=true
-                Traverse.Create(gun).Field<bool>("_recoilBack").Value = true;
-            }
-            catch
-            {
-            }
+public class WeaponTool
+{
+    private void TryStartVisualRecoil(ItemAgent_Gun gun)
+    {
+        if (!gun) return;
+        try
+        {
+            Traverse.Create(gun).Method("StartVisualRecoil").GetValue();
+            return;
+        }
+        catch
+        {
+        }
+
+        try
+        {
+            // 兜底：等价于 StartVisualRecoil() 内部把 _recoilBack=true
+            Traverse.Create(gun).Field<bool>("_recoilBack").Value = true;
+        }
+        catch
+        {
         }
     }
 }

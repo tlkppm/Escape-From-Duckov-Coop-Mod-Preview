@@ -18,48 +18,47 @@ using System.Reflection;
 using Duckov.Buffs;
 using ItemStatsSystem;
 
-namespace EscapeFromDuckovCoopMod
-{
-    internal class _BuffLateBinder : MonoBehaviour
-    {
-        private Buff _buff;
-        private bool _done;
-        private FieldInfo _fiEffects;
+namespace EscapeFromDuckovCoopMod;
 
-        private void Update()
+internal class _BuffLateBinder : MonoBehaviour
+{
+    private Buff _buff;
+    private bool _done;
+    private FieldInfo _fiEffects;
+
+    private void Update()
+    {
+        if (_done || _buff == null)
         {
-            if (_done || _buff == null)
+            Destroy(this);
+            return;
+        }
+
+        // 取 CharacterItem（Buff 里已有安全 getter）
+        var cmc = (_buff ? AccessTools.Field(typeof(Buff), "master")?.GetValue(_buff) as CharacterBuffManager : null)?.Master;
+        var item = cmc ? cmc.CharacterItem : null;
+        if (item == null || item.transform == null) return; // 还没就绪，下一帧再试
+
+        // 1) 把 Buff 的 transform 挂到 CharacterItem 下
+        _buff.transform.SetParent(item.transform, false);
+
+        // 2) 给所有 effect 绑定 Item
+        var effectsObj = _fiEffects?.GetValue(_buff) as IList<Effect>;
+        if (effectsObj != null)
+            for (var i = 0; i < effectsObj.Count; i++)
             {
-                Destroy(this);
-                return;
+                var e = effectsObj[i];
+                if (e != null) e.SetItem(item);
             }
 
-            // 取 CharacterItem（Buff 里已有安全 getter）
-            var cmc = (_buff ? AccessTools.Field(typeof(Buff), "master")?.GetValue(_buff) as CharacterBuffManager : null)?.Master;
-            var item = cmc ? cmc.CharacterItem : null;
-            if (item == null || item.transform == null) return; // 还没就绪，下一帧再试
+        // 一次性完成，移除自己
+        _done = true;
+        Destroy(this);
+    }
 
-            // 1) 把 Buff 的 transform 挂到 CharacterItem 下
-            _buff.transform.SetParent(item.transform, false);
-
-            // 2) 给所有 effect 绑定 Item
-            var effectsObj = _fiEffects?.GetValue(_buff) as IList<Effect>;
-            if (effectsObj != null)
-                for (var i = 0; i < effectsObj.Count; i++)
-                {
-                    var e = effectsObj[i];
-                    if (e != null) e.SetItem(item);
-                }
-
-            // 一次性完成，移除自己
-            _done = true;
-            Destroy(this);
-        }
-
-        public void Init(Buff buff, FieldInfo fiEffects)
-        {
-            _buff = buff;
-            _fiEffects = fiEffects;
-        }
+    public void Init(Buff buff, FieldInfo fiEffects)
+    {
+        _buff = buff;
+        _fiEffects = fiEffects;
     }
 }

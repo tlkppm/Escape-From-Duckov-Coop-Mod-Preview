@@ -14,38 +14,37 @@
 // MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
 // GNU Affero General Public License for more details.
 
-namespace EscapeFromDuckovCoopMod
+namespace EscapeFromDuckovCoopMod;
+
+public sealed class NetAiTag : MonoBehaviour
 {
-    public sealed class NetAiTag : MonoBehaviour
+    public int aiId;
+    public string nameOverride; // 主机下发的显示名（纯文本
+    public int? iconTypeOverride; // 来自主机的 CharacterIconTypes（int）
+    public bool? showNameOverride; // 主机裁决是否显示名字
+
+    private void Awake()
     {
-        public int aiId;
-        public string nameOverride; // 主机下发的显示名（纯文本
-        public int? iconTypeOverride; // 来自主机的 CharacterIconTypes（int）
-        public bool? showNameOverride; // 主机裁决是否显示名字
+        Guard();
+    }
 
-        private void Awake()
+    private void OnEnable()
+    {
+        Guard();
+    }
+
+    private void Guard()
+    {
+        try
         {
-            Guard();
+            var cmc = GetComponent<CharacterMainControl>();
+            var mod = ModBehaviourF.Instance;
+            if (!cmc || mod == null) return;
+
+            if (!AITool.IsRealAI(cmc)) Destroy(this);
         }
-
-        private void OnEnable()
+        catch
         {
-            Guard();
-        }
-
-        private void Guard()
-        {
-            try
-            {
-                var cmc = GetComponent<CharacterMainControl>();
-                var mod = ModBehaviourF.Instance;
-                if (!cmc || mod == null) return;
-
-                if (!AITool.IsRealAI(cmc)) Destroy(this);
-            }
-            catch
-            {
-            }
         }
     }
 }

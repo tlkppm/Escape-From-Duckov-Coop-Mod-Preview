@@ -16,45 +16,44 @@
 
 using ItemStatsSystem;
 
-namespace EscapeFromDuckovCoopMod
+namespace EscapeFromDuckovCoopMod;
+
+public class ItemRequest
 {
-    public class ItemRequest
+    private NetService Service => NetService.Instance;
+
+
+    private bool IsServer => Service != null && Service.IsServer;
+    private NetManager netManager => Service?.netManager;
+    private NetDataWriter writer => Service?.writer;
+    private NetPeer connectedPeer => Service?.connectedPeer;
+    private PlayerStatus localPlayerStatus => Service?.localPlayerStatus;
+    private bool networkStarted => Service != null && Service.networkStarted;
+
+    public void SendItemDropRequest(uint token, Item item, Vector3 pos, bool createRb, Vector3 dir, float angle)
     {
-        private NetService Service => NetService.Instance;
+        if (netManager == null || IsServer) return;
+        var w = writer;
+        if (w == null) return;
+        w.Reset();
+        w.Put((byte)Op.ITEM_DROP_REQUEST);
+        w.Put(token);
+        w.PutV3cm(pos);
+        w.PutDir(dir);
+        w.Put(angle);
+        w.Put(createRb);
+        ItemTool.WriteItemSnapshot(w, item);
+        CoopTool.SendReliable(w);
+    }
 
-
-        private bool IsServer => Service != null && Service.IsServer;
-        private NetManager netManager => Service?.netManager;
-        private NetDataWriter writer => Service?.writer;
-        private NetPeer connectedPeer => Service?.connectedPeer;
-        private PlayerStatus localPlayerStatus => Service?.localPlayerStatus;
-        private bool networkStarted => Service != null && Service.networkStarted;
-
-        public void SendItemDropRequest(uint token, Item item, Vector3 pos, bool createRb, Vector3 dir, float angle)
-        {
-            if (netManager == null || IsServer) return;
-            var w = writer;
-            if (w == null) return;
-            w.Reset();
-            w.Put((byte)Op.ITEM_DROP_REQUEST);
-            w.Put(token);
-            w.PutV3cm(pos);
-            w.PutDir(dir);
-            w.Put(angle);
-            w.Put(createRb);
-            ItemTool.WriteItemSnapshot(w, item);
-            CoopTool.SendReliable(w);
-        }
-
-        public void SendItemPickupRequest(uint dropId)
-        {
-            if (IsServer || !networkStarted) return;
-            var w = writer;
-            if (w == null) return;
-            w.Reset();
-            w.Put((byte)Op.ITEM_PICKUP_REQUEST);
-            w.Put(dropId);
-            CoopTool.SendReliable(w);
-        }
+    public void SendItemPickupRequest(uint dropId)
+    {
+        if (IsServer || !networkStarted) return;
+        var w = writer;
+        if (w == null) return;
+        w.Reset();
+        w.Put((byte)Op.ITEM_PICKUP_REQUEST);
+        w.Put(dropId);
+        CoopTool.SendReliable(w);
     }
 }

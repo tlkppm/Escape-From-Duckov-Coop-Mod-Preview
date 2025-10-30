@@ -17,83 +17,82 @@
 using System.Collections;
 using System.Reflection;
 
-namespace EscapeFromDuckovCoopMod
+namespace EscapeFromDuckovCoopMod;
+
+[DisallowMultipleComponent]
+public class AutoRequestHealthBar : MonoBehaviour
 {
-    [DisallowMultipleComponent]
-    public class AutoRequestHealthBar : MonoBehaviour
+    private static readonly FieldInfo FI_character =
+        typeof(Health).GetField("characterCached", BindingFlags.NonPublic | BindingFlags.Instance);
+
+    private static readonly FieldInfo FI_hasChar =
+        typeof(Health).GetField("hasCharacter", BindingFlags.NonPublic | BindingFlags.Instance);
+
+    [SerializeField] private int attempts = 30; // 最长重试次数（总计约 3 秒）
+    [SerializeField] private float interval = 0.1f; // 每次重试间隔
+
+    private void OnEnable()
     {
-        private static readonly FieldInfo FI_character =
-            typeof(Health).GetField("characterCached", BindingFlags.NonPublic | BindingFlags.Instance);
+        StartCoroutine(Bootstrap());
+    }
 
-        private static readonly FieldInfo FI_hasChar =
-            typeof(Health).GetField("hasCharacter", BindingFlags.NonPublic | BindingFlags.Instance);
+    private IEnumerator Bootstrap()
+    {
+        // 等一帧，确保层级/场景/UI 管线基本就绪??
+        yield return null;
+        yield return null;
 
-        [SerializeField] private int attempts = 30; // 最长重试次数（总计约 3 秒）
-        [SerializeField] private float interval = 0.1f; // 每次重试间隔
+        var cmc = GetComponent<CharacterMainControl>();
+        var h = GetComponentInChildren<Health>(true);
+        if (!h) yield break;
 
-        private void OnEnable()
+        // 绑定 Health⇄Character（远端克隆常见问题）
+        try
         {
-            StartCoroutine(Bootstrap());
+            FI_character?.SetValue(h, cmc);
+            FI_hasChar?.SetValue(h, true);
+        }
+        catch
+        {
         }
 
-        private IEnumerator Bootstrap()
+        for (var i = 0; i < attempts; i++)
         {
-            // 等一帧，确保层级/场景/UI 管线基本就绪??
-            yield return null;
-            yield return null;
-
-            var cmc = GetComponent<CharacterMainControl>();
-            var h = GetComponentInChildren<Health>(true);
             if (!h) yield break;
 
-            // 绑定 Health⇄Character（远端克隆常见问题）
             try
             {
-                FI_character?.SetValue(h, cmc);
-                FI_hasChar?.SetValue(h, true);
+                h.showHealthBar = true;
             }
             catch
             {
             }
 
-            for (var i = 0; i < attempts; i++)
+            try
             {
-                if (!h) yield break;
-
-                try
-                {
-                    h.showHealthBar = true;
-                }
-                catch
-                {
-                }
-
-                try
-                {
-                    h.RequestHealthBar();
-                }
-                catch
-                {
-                }
-
-                try
-                {
-                    h.OnMaxHealthChange?.Invoke(h);
-                }
-                catch
-                {
-                }
-
-                try
-                {
-                    h.OnHealthChange?.Invoke(h);
-                }
-                catch
-                {
-                }
-
-                yield return new WaitForSeconds(interval);
+                h.RequestHealthBar();
             }
+            catch
+            {
+            }
+
+            try
+            {
+                h.OnMaxHealthChange?.Invoke(h);
+            }
+            catch
+            {
+            }
+
+            try
+            {
+                h.OnHealthChange?.Invoke(h);
+            }
+            catch
+            {
+            }
+
+            yield return new WaitForSeconds(interval);
         }
     }
 }

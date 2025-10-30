@@ -14,51 +14,50 @@
 // MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
 // GNU Affero General Public License for more details.
 
-namespace EscapeFromDuckovCoopMod
+namespace EscapeFromDuckovCoopMod;
+
+public class EquipmentSyncData
 {
-    public class EquipmentSyncData
+    public string ItemId;
+    public int SlotHash;
+
+    public void Serialize(NetDataWriter writer)
     {
-        public string ItemId;
-        public int SlotHash;
-
-        public void Serialize(NetDataWriter writer)
-        {
-            writer.Put(SlotHash);
-            writer.Put(ItemId ?? "");
-        }
-
-        public static EquipmentSyncData Deserialize(NetPacketReader reader)
-        {
-            return new EquipmentSyncData
-            {
-                SlotHash = reader.GetInt(),
-                ItemId = reader.GetString()
-            };
-        }
+        writer.Put(SlotHash);
+        writer.Put(ItemId ?? "");
     }
 
-    public class WeaponSyncData
+    public static EquipmentSyncData Deserialize(NetPacketReader reader)
     {
-        public string ItemId;
-        public int SlotHash;
-
-        public void Serialize(NetDataWriter writer)
+        return new EquipmentSyncData
         {
-            writer.Put(SlotHash);
-            writer.Put(ItemId ?? "");
-        }
+            SlotHash = reader.GetInt(),
+            ItemId = reader.GetString()
+        };
+    }
+}
 
-        public static WeaponSyncData Deserialize(NetPacketReader reader)
-        {
-            return new WeaponSyncData
-            {
-                SlotHash = reader.GetInt(),
-                ItemId = reader.GetString()
-            };
-        }
+public class WeaponSyncData
+{
+    public string ItemId;
+    public int SlotHash;
+
+    public void Serialize(NetDataWriter writer)
+    {
+        writer.Put(SlotHash);
+        writer.Put(ItemId ?? "");
     }
 
-    public static class SyncDataManger
+    public static WeaponSyncData Deserialize(NetPacketReader reader)
     {
+        return new WeaponSyncData
+        {
+            SlotHash = reader.GetInt(),
+            ItemId = reader.GetString()
+        };
     }
+}
+
+public static class SyncDataManger
+{
 }

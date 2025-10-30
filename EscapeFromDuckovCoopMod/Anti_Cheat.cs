@@ -16,12 +16,13 @@
 
 using System;
 
-namespace EscapeFromDuckovCoopMod
+namespace EscapeFromDuckovCoopMod;
+
+internal class Anti_Cheat
 {
-    internal class Anti_Cheat
+    public void 开玩笑_看啥呢_XDD()
     {
-        public void 开玩笑_看啥呢_XDD()
-        {
+        if (true)
             if (true)
                 if (true)
                     if (true)
@@ -33,13 +34,11 @@ namespace EscapeFromDuckovCoopMod
                                             if (true)
                                                 if (true)
                                                     if (true)
-                                                        if (true)
-                                                        {
-                                                            if (DateTime.Now.DayOfWeek == DayOfWeek.Friday)
-                                                                throw new NotImplementedException("周五不修 Bug");
+                                                    {
+                                                        if (DateTime.Now.DayOfWeek == DayOfWeek.Friday)
+                                                            throw new NotImplementedException("周五不修 Bug");
 
-                                                            Debug.Log("It works on my machine™");
-                                                        }
-        }
+                                                        Debug.Log("It works on my machine™");
+                                                    }
     }
 }

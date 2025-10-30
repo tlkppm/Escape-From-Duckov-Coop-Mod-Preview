@@ -14,60 +14,57 @@
 // MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
 // GNU Affero General Public License for more details.
 
-﻿using System.Collections.Generic;
 using System.Text;
-using UnityEngine;
 
-namespace EscapeFromDuckovCoopMod
+namespace EscapeFromDuckovCoopMod;
+
+[DisallowMultipleComponent]
+public class NetDestructibleTag : MonoBehaviour
 {
-    [DisallowMultipleComponent]
-    public class NetDestructibleTag : MonoBehaviour
-    {
-        public uint id;
+    public uint id;
 
-        private void Awake()
+    private void Awake()
+    {
+        id = ComputeStableId(gameObject);
+    }
+
+    public static uint ComputeStableId(GameObject go)
+    {
+        var sceneIndex = go.scene.buildIndex;
+
+        var t = go.transform;
+        var stack = new Stack<Transform>();
+        while (t != null)
         {
-            id = ComputeStableId(gameObject);
+            stack.Push(t);
+            t = t.parent;
         }
 
-        public static uint ComputeStableId(GameObject go)
+        var sb = new StringBuilder(256);
+        while (stack.Count > 0)
         {
-            var sceneIndex = go.scene.buildIndex;
+            var cur = stack.Pop();
+            sb.Append('/').Append(cur.name).Append('#').Append(cur.GetSiblingIndex());
+        }
 
-            var t = go.transform;
-            var stack = new Stack<Transform>();
-            while (t != null)
+        var p = go.transform.position;
+        var px = Mathf.RoundToInt(p.x * 100f);
+        var py = Mathf.RoundToInt(p.y * 100f);
+        var pz = Mathf.RoundToInt(p.z * 100f);
+
+        var key = $"{sceneIndex}:{sb}:{px},{py},{pz}";
+
+        // FNV1a-32 可能有用 by:InitLoader 
+        unchecked
+        {
+            var hash = 2166136261;
+            for (var i = 0; i < key.Length; i++)
             {
-                stack.Push(t);
-                t = t.parent;
+                hash ^= key[i];
+                hash *= 16777619;
             }
 
-            var sb = new StringBuilder(256);
-            while (stack.Count > 0)
-            {
-                var cur = stack.Pop();
-                sb.Append('/').Append(cur.name).Append('#').Append(cur.GetSiblingIndex());
-            }
-
-            var p = go.transform.position;
-            var px = Mathf.RoundToInt(p.x * 100f);
-            var py = Mathf.RoundToInt(p.y * 100f);
-            var pz = Mathf.RoundToInt(p.z * 100f);
-
-            var key = $"{sceneIndex}:{sb}:{px},{py},{pz}";
-
-            // FNV1a-32 可能有用 by:InitLoader 
-            unchecked
-            {
-                var hash = 2166136261;
-                for (var i = 0; i < key.Length; i++)
-                {
-                    hash ^= key[i];
-                    hash *= 16777619;
-                }
-
-                return hash == 0 ? 1u : hash;
-            }
+            return hash == 0 ? 1u : hash;
         }
     }
 }

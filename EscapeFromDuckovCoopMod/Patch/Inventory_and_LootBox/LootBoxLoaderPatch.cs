@@ -14,88 +14,83 @@
 // MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
 // GNU Affero General Public License for more details.
 
-﻿using System;
-using Cysharp.Threading.Tasks;
+using System;
 using Duckov.Scenes;
 using Duckov.Utilities;
-using HarmonyLib;
-using UnityEngine;
 
-namespace EscapeFromDuckovCoopMod
+namespace EscapeFromDuckovCoopMod;
+
+[HarmonyPatch(typeof(LootBoxLoader), "Setup")]
+internal static class Patch_LootBoxLoader_Setup_GuardClientInit
 {
-    [HarmonyPatch(typeof(LootBoxLoader), "Setup")]
-    internal static class Patch_LootBoxLoader_Setup_GuardClientInit
+    private static void Prefix()
     {
-        private static void Prefix()
-        {
-            var m = ModBehaviourF.Instance;
-            if (m != null && m.networkStarted && !m.IsServer)
-                m._clientLootSetupDepth++;
-        }
+        var m = ModBehaviourF.Instance;
+        if (m != null && m.networkStarted && !m.IsServer)
+            m._clientLootSetupDepth++;
+    }
 
-        // 用 Finalizer 确保异常时也能退出“初始化阶段”
-        private static void Finalizer(Exception __exception)
+    // 用 Finalizer 确保异常时也能退出“初始化阶段”
+    private static void Finalizer(Exception __exception)
+    {
+        var m = ModBehaviourF.Instance;
+        if (m != null && m.networkStarted && !m.IsServer && m._clientLootSetupDepth > 0)
+            m._clientLootSetupDepth--;
+    }
+}
+
+[HarmonyPatch(typeof(LootBoxLoader), "Setup")]
+internal static class Patch_LootBoxLoader_Setup_BroadcastOnServer
+{
+    private static async void Postfix(LootBoxLoader __instance)
+    {
+        var m = ModBehaviourF.Instance;
+        if (m == null || !m.networkStarted || !m.IsServer) return;
+        await UniTask.Yield(); // 等一帧，确保物品都进箱子
+        var box = __instance ? __instance.GetComponent<InteractableLootbox>() : null;
+        var inv = box ? box.Inventory : null;
+        if (inv != null) COOPManager.LootNet.Server_SendLootboxState(null, inv);
+    }
+}
+
+[HarmonyPatch(typeof(LootBoxLoader), "RandomActive")]
+internal static class Patch_LootBoxLoader_RandomActive_NetAuthority
+{
+    private static bool Prefix(LootBoxLoader __instance)
+    {
+        var m = ModBehaviourF.Instance;
+        if (m == null || !m.networkStarted || m.IsServer) return true;
+
+        try
         {
-            var m = ModBehaviourF.Instance;
-            if (m != null && m.networkStarted && !m.IsServer && m._clientLootSetupDepth > 0)
-                m._clientLootSetupDepth--;
+            var core = MultiSceneCore.Instance;
+            if (core == null) return true; // 没 core 就让它走原逻辑，避免极端时序问题
+
+            // 计算与游戏一致的 key（复制 GetKey 的算法）
+            var key = ModBehaviour_ComputeLootKeyCompat(__instance.transform);
+
+
+            if (core.inLevelData != null && core.inLevelData.TryGetValue(key, out var obj) && obj is bool on)
+                __instance.gameObject.SetActive(on);
+            else
+                __instance.gameObject.SetActive(false); // 未拿到就先关
+
+            return false; // 阻止原始随机
+        }
+        catch
+        {
+            return true; // 防守式：异常时走原逻辑
         }
     }
 
-
-    [HarmonyPatch(typeof(LootBoxLoader), "Setup")]
-    internal static class Patch_LootBoxLoader_Setup_BroadcastOnServer
+    private static int ModBehaviour_ComputeLootKeyCompat(Transform t)
     {
-        private static async void Postfix(LootBoxLoader __instance)
-        {
-            var m = ModBehaviourF.Instance;
-            if (m == null || !m.networkStarted || !m.IsServer) return;
-            await UniTask.Yield(); // 等一帧，确保物品都进箱子
-            var box = __instance ? __instance.GetComponent<InteractableLootbox>() : null;
-            var inv = box ? box.Inventory : null;
-            if (inv != null) COOPManager.LootNet.Server_SendLootboxState(null, inv);
-        }
-    }
-
-    [HarmonyPatch(typeof(LootBoxLoader), "RandomActive")]
-    internal static class Patch_LootBoxLoader_RandomActive_NetAuthority
-    {
-        private static bool Prefix(LootBoxLoader __instance)
-        {
-            var m = ModBehaviourF.Instance;
-            if (m == null || !m.networkStarted || m.IsServer) return true;
-
-            try
-            {
-                var core = MultiSceneCore.Instance;
-                if (core == null) return true; // 没 core 就让它走原逻辑，避免极端时序问题
-
-                // 计算与游戏一致的 key（复制 GetKey 的算法）
-                var key = ModBehaviour_ComputeLootKeyCompat(__instance.transform);
-
-
-                if (core.inLevelData != null && core.inLevelData.TryGetValue(key, out var obj) && obj is bool on)
-                    __instance.gameObject.SetActive(on);
-                else
-                    __instance.gameObject.SetActive(false); // 未拿到就先关
-
-                return false; // 阻止原始随机
-            }
-            catch
-            {
-                return true; // 防守式：异常时走原逻辑
-            }
-        }
-
-        private static int ModBehaviour_ComputeLootKeyCompat(Transform t)
-        {
-            if (t == null) return 0;
-            var v = t.position * 10f;
-            var x = Mathf.RoundToInt(v.x);
-            var y = Mathf.RoundToInt(v.y);
-            var z = Mathf.RoundToInt(v.z);
-            var v3i = new Vector3Int(x, y, z);
-            return v3i.GetHashCode();
-        }
+        if (t == null) return 0;
+        var v = t.position * 10f;
+        var x = Mathf.RoundToInt(v.x);
+        var y = Mathf.RoundToInt(v.y);
+        var z = Mathf.RoundToInt(v.z);
+        var v3i = new Vector3Int(x, y, z);
+        return v3i.GetHashCode();
     }
 }

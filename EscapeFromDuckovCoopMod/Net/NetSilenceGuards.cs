@@ -14,14 +14,13 @@
 // MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
 // GNU Affero General Public License for more details.
 
-﻿using System;
+using System;
 
-namespace EscapeFromDuckovCoopMod
+namespace EscapeFromDuckovCoopMod;
+
+public static class NetSilenceGuards
 {
-    public static class NetSilenceGuards
-    {
-        // 线程级：避免并发串线
-        [ThreadStatic] public static bool InPickupItem; // 正在执行 CharacterItemControl.PickupItem
-        [ThreadStatic] public static bool InCapacityShrinkCleanup; // 正在执行容量下调清理（可选，见下）
-    }
+    // 线程级：避免并发串线
+    [ThreadStatic] public static bool InPickupItem; // 正在执行 CharacterItemControl.PickupItem
+    [ThreadStatic] public static bool InCapacityShrinkCleanup; // 正在执行容量下调清理（可选，见下）
 }

@@ -14,32 +14,29 @@
 // MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
 // GNU Affero General Public License for more details.
 
-﻿using HarmonyLib;
+namespace EscapeFromDuckovCoopMod;
 
-namespace EscapeFromDuckovCoopMod
+public class WeaponTool
 {
-    public class WeaponTool
+    private void TryStartVisualRecoil(ItemAgent_Gun gun)
     {
-        private void TryStartVisualRecoil(ItemAgent_Gun gun)
+        if (!gun) return;
+        try
         {
-            if (!gun) return;
-            try
-            {
-                Traverse.Create(gun).Method("StartVisualRecoil").GetValue();
-                return;
-            }
-            catch
-            {
-            }
+            Traverse.Create(gun).Method("StartVisualRecoil").GetValue();
+            return;
+        }
+        catch
+        {
+        }
 
-            try
-            {
-                // 兜底：等价于 StartVisualRecoil() 内部把 _recoilBack=true
-                Traverse.Create(gun).Field<bool>("_recoilBack").Value = true;
-            }
-            catch
-            {
-            }
+        try
+        {
+            // 兜底：等价于 StartVisualRecoil() 内部把 _recoilBack=true
+            Traverse.Create(gun).Field<bool>("_recoilBack").Value = true;
+        }
+        catch
+        {
         }
     }
 }

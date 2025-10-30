@@ -14,75 +14,72 @@
 // MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
 // GNU Affero General Public License for more details.
 
-﻿using System;
-using HarmonyLib;
-using UnityEngine;
+using System;
 
-namespace EscapeFromDuckovCoopMod
+namespace EscapeFromDuckovCoopMod;
+
+public class ModBehaviour : Duckov.Modding.ModBehaviour
 {
-    public class ModBehaviour : Duckov.Modding.ModBehaviour
+    public Harmony Harmony;
+
+    public void OnEnable()
     {
-        public Harmony Harmony;
+        Harmony = new Harmony("DETF_COOP");
+        Harmony.PatchAll();
 
-        public void OnEnable()
+        var go = new GameObject("COOP_MOD_1");
+        DontDestroyOnLoad(go);
+
+        go.AddComponent<NetService>();
+        COOPManager.InitManager();
+        go.AddComponent<ModBehaviourF>();
+        Loader();
+    }
+
+    public void Loader()
+    {
+        var go = new GameObject("COOP_MOD_");
+        DontDestroyOnLoad(go);
+
+        go.AddComponent<AIRequest>();
+        go.AddComponent<Send_ClientStatus>();
+        go.AddComponent<HealthM>();
+        go.AddComponent<LoaclPlayerManager>();
+        go.AddComponent<Send_LoaclPlayerStatus>();
+        go.AddComponent<Spectator>();
+        go.AddComponent<DeadLootBox>();
+        go.AddComponent<LootManager>();
+        go.AddComponent<SceneNet>();
+        go.AddComponent<ModUI>();
+        CoopTool.Init();
+
+        DeferredInit();
+    }
+
+    private void DeferredInit()
+    {
+        SafeInit<SceneNet>(sn => sn.Init());
+        SafeInit<LootManager>(lm => lm.Init());
+        SafeInit<LoaclPlayerManager>(lpm => lpm.Init());
+        SafeInit<HealthM>(hm => hm.Init());
+        SafeInit<Send_LoaclPlayerStatus>(s => s.Init());
+        SafeInit<Spectator>(s => s.Init());
+        SafeInit<ModUI>(ui => ui.Init());
+        SafeInit<AIRequest>(a => a.Init());
+        SafeInit<Send_ClientStatus>(s => s.Init());
+        SafeInit<DeadLootBox>(s => s.Init());
+    }
+
+    private void SafeInit<T>(Action<T> init) where T : Component
+    {
+        var c = FindObjectOfType<T>();
+        if (c == null) return;
+        try
         {
-            Harmony = new Harmony("DETF_COOP");
-            Harmony.PatchAll();
-
-            var go = new GameObject("COOP_MOD_1");
-            DontDestroyOnLoad(go);
-
-            go.AddComponent<NetService>();
-            COOPManager.InitManager();
-            go.AddComponent<ModBehaviourF>();
-            Loader();
+            init(c);
         }
-
-        public void Loader()
+        catch
         {
-            var go = new GameObject("COOP_MOD_");
-            DontDestroyOnLoad(go);
-
-            go.AddComponent<AIRequest>();
-            go.AddComponent<Send_ClientStatus>();
-            go.AddComponent<HealthM>();
-            go.AddComponent<LoaclPlayerManager>();
-            go.AddComponent<Send_LoaclPlayerStatus>();
-            go.AddComponent<Spectator>();
-            go.AddComponent<DeadLootBox>();
-            go.AddComponent<LootManager>();
-            go.AddComponent<SceneNet>();
-            go.AddComponent<ModUI>();
-            CoopTool.Init();
-
-            DeferredInit();
-        }
-
-        private void DeferredInit()
-        {
-            SafeInit<SceneNet>(sn => sn.Init());
-            SafeInit<LootManager>(lm => lm.Init());
-            SafeInit<LoaclPlayerManager>(lpm => lpm.Init());
-            SafeInit<HealthM>(hm => hm.Init());
-            SafeInit<Send_LoaclPlayerStatus>(s => s.Init());
-            SafeInit<Spectator>(s => s.Init());
-            SafeInit<ModUI>(ui => ui.Init());
-            SafeInit<AIRequest>(a => a.Init());
-            SafeInit<Send_ClientStatus>(s => s.Init());
-            SafeInit<DeadLootBox>(s => s.Init());
-        }
-
-        private void SafeInit<T>(Action<T> init) where T : Component
-        {
-            var c = FindObjectOfType<T>();
-            if (c == null) return;
-            try
-            {
-                init(c);
-            }
-            catch
-            {
-            }
         }
     }
 }

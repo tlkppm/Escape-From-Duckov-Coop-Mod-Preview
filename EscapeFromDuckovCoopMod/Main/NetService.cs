@@ -25,7 +25,7 @@ public class NetService : MonoBehaviour, INetEventListener
     public int port = 9050;
     public List<string> hostList = new();
     public bool isConnecting;
-    public string status = "未连接";
+    public string status = "";
     public string manualIP = "127.0.0.1";
     public string manualPort = "9050"; // GTX 5090 我也想要
     public bool networkStarted;
@@ -60,12 +60,12 @@ public class NetService : MonoBehaviour, INetEventListener
 
     public void OnPeerConnected(NetPeer peer)
     {
-        Debug.Log($"连接成功: {peer.EndPoint}");
+        Debug.Log(CoopLocalization.Get("net.connectionSuccess", peer.EndPoint.ToString()));
         connectedPeer = peer;
 
         if (!IsServer)
         {
-            status = $"已连接到 {peer.EndPoint}";
+            status = CoopLocalization.Get("net.connectedTo", peer.EndPoint.ToString());
             isConnecting = false;
             Send_ClientStatus.Instance.SendClientStatusUpdate();
         }
@@ -155,10 +155,10 @@ public class NetService : MonoBehaviour, INetEventListener
 
     public void OnPeerDisconnected(NetPeer peer, DisconnectInfo disconnectInfo)
     {
-        Debug.Log($"断开连接: {peer.EndPoint}, 原因: {disconnectInfo.Reason}");
+        Debug.Log(CoopLocalization.Get("net.disconnected", peer.EndPoint.ToString(), disconnectInfo.Reason.ToString()));
         if (!IsServer)
         {
-            status = "连接断开";
+            status = CoopLocalization.Get("net.connectionLost");
             isConnecting = false;
         }
 
@@ -181,7 +181,7 @@ public class NetService : MonoBehaviour, INetEventListener
 
     public void OnNetworkError(IPEndPoint endPoint, SocketError socketError)
     {
-        Debug.LogError($"网络错误: {socketError} 来自 {endPoint}");
+        Debug.LogError(CoopLocalization.Get("net.networkError", socketError, endPoint.ToString()));
     }
 
     public void OnNetworkReceive(NetPeer peer, NetPacketReader reader, byte channelNumber, DeliveryMethod deliveryMethod)
@@ -206,7 +206,7 @@ public class NetService : MonoBehaviour, INetEventListener
             {
                 hostSet.Add(hostInfo);
                 hostList.Add(hostInfo);
-                Debug.Log("发现主机: " + hostInfo);
+                Debug.Log(CoopLocalization.Get("net.hostDiscovered", hostInfo));
             }
         }
     }
@@ -244,25 +244,31 @@ public class NetService : MonoBehaviour, INetEventListener
         if (IsServer)
         {
             var started = netManager.Start(port);
-            if (started) Debug.Log($"服务器启动，监听端口 {port}");
-            else Debug.LogError("服务器启动失败，请检查端口是否被占用");
+            if (started)
+            {
+                Debug.Log(CoopLocalization.Get("net.serverStarted", port));
+            }
+            else
+            {
+                Debug.LogError(CoopLocalization.Get("net.serverStartFailed"));
+            }
         }
         else
         {
             var started = netManager.Start();
             if (started)
             {
-                Debug.Log("客户端启动");
+                Debug.Log(CoopLocalization.Get("net.clientStarted"));
                 CoopTool.SendBroadcastDiscovery();
             }
             else
             {
-                Debug.LogError("客户端启动失败");
+                Debug.LogError(CoopLocalization.Get("net.clientStartFailed"));
             }
         }
 
         networkStarted = true;
-        status = "网络已启动";
+        status = CoopLocalization.Get("net.networkStarted");
         hostList.Clear();
         hostSet.Clear();
         isConnecting = false;
@@ -286,7 +292,7 @@ public class NetService : MonoBehaviour, INetEventListener
         if (netManager != null && netManager.IsRunning)
         {
             netManager.Stop();
-            Debug.Log("网络已停止");
+            Debug.Log(CoopLocalization.Get("net.networkStopped"));
         }
 
         networkStarted = false;
@@ -315,31 +321,31 @@ public class NetService : MonoBehaviour, INetEventListener
         // 基础校验
         if (string.IsNullOrWhiteSpace(ip))
         {
-            status = "IP为空";
+            status = CoopLocalization.Get("net.ipEmpty");
             isConnecting = false;
             return;
         }
 
         if (port <= 0 || port > 65535)
         {
-            status = "端口不合法";
+            status = CoopLocalization.Get("net.invalidPort");
             isConnecting = false;
             return;
         }
 
         if (IsServer)
         {
-            Debug.LogWarning("服务器模式不能主动连接其他主机");
+            Debug.LogWarning(CoopLocalization.Get("net.serverModeCannotConnect"));
             return;
         }
 
         if (isConnecting)
         {
-            Debug.LogWarning("正在连接中.");
+            Debug.LogWarning(CoopLocalization.Get("net.alreadyConnecting"));
             return;
         }
 
-        //如未启动或仍在主机模式，则切到“客户端网络”
+        //如未启动或仍在主机模式，则切到"客户端网络"
         if (netManager == null || !netManager.IsRunning || IsServer || !networkStarted)
             try
             {
@@ -347,8 +353,8 @@ public class NetService : MonoBehaviour, INetEventListener
             }
             catch (Exception e)
             {
-                Debug.LogError($"启动客户端网络失败：{e}");
-                status = "客户端网络启动失败";
+                Debug.LogError(CoopLocalization.Get("net.clientNetworkStartFailed", e));
+                status = CoopLocalization.Get("net.clientNetworkStartFailedStatus");
                 isConnecting = false;
                 return;
             }
@@ -356,14 +362,14 @@ public class NetService : MonoBehaviour, INetEventListener
         // 二次确认
         if (netManager == null || !netManager.IsRunning)
         {
-            status = "客户端未启动";
+            status = CoopLocalization.Get("net.clientNotStarted");
             isConnecting = false;
             return;
         }
 
         try
         {
-            status = $"连接中: {ip}:{port}";
+            status = CoopLocalization.Get("net.connectingTo", ip, port);
             isConnecting = true;
 
             // 若已有连接，先断开（以免残留状态）
@@ -385,8 +391,8 @@ public class NetService : MonoBehaviour, INetEventListener
         }
         catch (Exception ex)
         {
-            Debug.LogError($"连接到主机失败: {ex}");
-            status = "连接失败";
+            Debug.LogError(CoopLocalization.Get("net.connectionFailedLog", ex));
+            status = CoopLocalization.Get("net.connectionFailed");
             isConnecting = false;
             connectedPeer = null;
         }

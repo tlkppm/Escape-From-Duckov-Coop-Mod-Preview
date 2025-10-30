@@ -36,6 +36,8 @@ public class ModBehaviour : Duckov.Modding.ModBehaviour
 
     public void Loader()
     {
+        CoopLocalization.Initialize();
+
         var go = new GameObject("COOP_MOD_");
         DontDestroyOnLoad(go);
 

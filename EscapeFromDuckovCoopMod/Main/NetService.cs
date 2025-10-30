@@ -14,7 +14,6 @@
 // MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
 // GNU Affero General Public License for more details.
 
-using System;
 using System.Net;
 using System.Net.Sockets;
 
@@ -84,7 +83,7 @@ public class NetService : MonoBehaviour, INetEventListener
                 CustomFaceJson = null
             };
 
-        if (IsServer) Send_LoaclPlayerStatus.Instance.SendPlayerStatusUpdate();
+        if (IsServer) SendLocalPlayerStatus.Instance.SendPlayerStatusUpdate();
 
         if (IsServer)
         {

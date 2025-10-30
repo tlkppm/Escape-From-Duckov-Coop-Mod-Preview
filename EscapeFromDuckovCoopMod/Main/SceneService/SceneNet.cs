@@ -14,7 +14,6 @@
 // MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
 // GNU Affero General Public License for more details.
 
-using System;
 using Duckov.UI;
 
 namespace EscapeFromDuckovCoopMod;
@@ -436,7 +435,7 @@ public class SceneNet : MonoBehaviour
             allowLocalSceneLoad = false;
             if (networkStarted)
             {
-                if (IsServer) Send_LoaclPlayerStatus.Instance.SendPlayerStatusUpdate();
+                if (IsServer) SendLocalPlayerStatus.Instance.SendPlayerStatusUpdate();
                 else Send_ClientStatus.Instance.SendClientStatusUpdate();
             }
         }

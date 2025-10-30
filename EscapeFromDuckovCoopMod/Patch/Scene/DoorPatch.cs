@@ -17,15 +17,15 @@
 namespace EscapeFromDuckovCoopMod;
 
 // ========= 客户端：拦截 Door.Open -> 发送请求给主机 =========
-[HarmonyPatch(typeof(Door), nameof(Door.Open))]
+[HarmonyPatch(typeof(global::Door), nameof(global::Door.Open))]
 internal static class Patch_Door_Open_ClientToServer
 {
-    private static bool Prefix(Door __instance)
+    private static bool Prefix(global::Door __instance)
     {
         var m = ModBehaviourF.Instance;
         if (m == null || !m.networkStarted) return true;
         if (m.IsServer) return true; // 主机放行
-        if (Door_._applyingDoor) return true; // 正在应用网络下发，放行
+        if (Door._applyingDoor) return true; // 正在应用网络下发，放行
 
         COOPManager.Door.Client_RequestDoorSetState(__instance, false);
         return false; // 客户端不直接开门
@@ -33,15 +33,15 @@ internal static class Patch_Door_Open_ClientToServer
 }
 
 // ========= 客户端：拦截 Door.Close -> 发送请求给主机 =========
-[HarmonyPatch(typeof(Door), nameof(Door.Close))]
+[HarmonyPatch(typeof(global::Door), nameof(global::Door.Close))]
 internal static class Patch_Door_Close_ClientToServer
 {
-    private static bool Prefix(Door __instance)
+    private static bool Prefix(global::Door __instance)
     {
         var m = ModBehaviourF.Instance;
         if (m == null || !m.networkStarted) return true;
         if (m.IsServer) return true;
-        if (Door_._applyingDoor) return true;
+        if (Door._applyingDoor) return true;
 
         COOPManager.Door.Client_RequestDoorSetState(__instance, true);
         return false;
@@ -49,15 +49,15 @@ internal static class Patch_Door_Close_ClientToServer
 }
 
 // ========= 客户端：拦截 Door.Switch -> 发送请求给主机 =========
-[HarmonyPatch(typeof(Door), nameof(Door.Switch))]
+[HarmonyPatch(typeof(global::Door), nameof(global::Door.Switch))]
 internal static class Patch_Door_Switch_ClientToServer
 {
-    private static bool Prefix(Door __instance)
+    private static bool Prefix(global::Door __instance)
     {
         var m = ModBehaviourF.Instance;
         if (m == null || !m.networkStarted) return true;
         if (m.IsServer) return true;
-        if (Door_._applyingDoor) return true;
+        if (Door._applyingDoor) return true;
 
         var isOpen = false;
         try
@@ -74,10 +74,10 @@ internal static class Patch_Door_Switch_ClientToServer
 }
 
 // ========= 主机：任何地方调用 SetClosed 都广播给所有客户端 =========
-[HarmonyPatch(typeof(Door), "SetClosed")]
+[HarmonyPatch(typeof(global::Door), "SetClosed")]
 internal static class Patch_Door_SetClosed_BroadcastOnServer
 {
-    private static void Postfix(Door __instance, bool _closed)
+    private static void Postfix(global::Door __instance, bool _closed)
     {
         var m = ModBehaviourF.Instance;
         if (m == null || !m.networkStarted || !m.IsServer) return;
@@ -85,7 +85,7 @@ internal static class Patch_Door_SetClosed_BroadcastOnServer
         var key = 0;
         try
         {
-            key = (int)AccessTools.Field(typeof(Door), "doorClosedDataKeyCached").GetValue(__instance);
+            key = (int)AccessTools.Field(typeof(global::Door), "doorClosedDataKeyCached").GetValue(__instance);
         }
         catch
         {

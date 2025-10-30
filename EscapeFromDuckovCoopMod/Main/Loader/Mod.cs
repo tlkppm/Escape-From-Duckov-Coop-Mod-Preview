@@ -14,7 +14,6 @@
 // MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
 // GNU Affero General Public License for more details.
 
-using System.Linq;
 using Duckov.UI;
 using ItemStatsSystem;
 using ItemStatsSystem.Items;
@@ -209,8 +208,8 @@ public class ModBehaviourF : MonoBehaviour
             syncTimer += Time.deltaTime;
             if (syncTimer >= syncInterval)
             {
-                Send_LoaclPlayerStatus.Instance.SendPositionUpdate();
-                Send_LoaclPlayerStatus.Instance.SendAnimationStatus();
+                SendLocalPlayerStatus.Instance.SendPositionUpdate();
+                SendLocalPlayerStatus.Instance.SendAnimationStatus();
                 syncTimer = 0f;
 
                 //if (!IsServer)
@@ -1583,7 +1582,7 @@ public class ModBehaviourF : MonoBehaviour
             localPlayerStatus.IsInGame = ok;
 
             if (!IsServer) Send_ClientStatus.Instance.SendClientStatusUpdate();
-            else Send_LoaclPlayerStatus.Instance.SendPlayerStatusUpdate();
+            else SendLocalPlayerStatus.Instance.SendPlayerStatusUpdate();
         }
         catch
         {

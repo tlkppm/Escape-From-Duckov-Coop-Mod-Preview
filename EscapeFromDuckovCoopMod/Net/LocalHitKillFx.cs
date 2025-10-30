@@ -17,6 +17,7 @@
 using System.Reflection;
 using Duckov.Utilities;
 using FX;
+using Object = UnityEngine.Object;
 
 namespace EscapeFromDuckovCoopMod;
 

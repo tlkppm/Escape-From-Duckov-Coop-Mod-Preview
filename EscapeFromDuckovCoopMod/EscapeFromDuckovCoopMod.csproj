@@ -1,402 +1,228 @@
-﻿<?xml version="1.0" encoding="utf-8"?>
-<Project ToolsVersion="15.0" xmlns="http://schemas.microsoft.com/developer/msbuild/2003">
-    <Import Project="$(MSBuildExtensionsPath)\$(MSBuildToolsVersion)\Microsoft.Common.props" Condition="Exists('$(MSBuildExtensionsPath)\$(MSBuildToolsVersion)\Microsoft.Common.props')"/>
+﻿<Project Sdk="Microsoft.NET.Sdk">
+
     <PropertyGroup>
-        <Configuration Condition=" '$(Configuration)' == '' ">Debug</Configuration>
-        <Platform Condition=" '$(Platform)' == '' ">AnyCPU</Platform>
-        <ProjectGuid>{C8C48E3C-68BF-4A39-9FB4-DBDB1ECEADDA}</ProjectGuid>
-        <OutputType>Library</OutputType>
-        <AppDesignerFolder>Properties</AppDesignerFolder>
-        <RootNamespace>EscapeFromDuckovCoopMod</RootNamespace>
-        <AssemblyName>EscapeFromDuckovCoopMod</AssemblyName>
-        <TargetFrameworkVersion>v4.8</TargetFrameworkVersion>
-        <FileAlignment>512</FileAlignment>
-        <Deterministic>true</Deterministic>
+        <TargetFramework>netstandard2.1</TargetFramework>
+        <ImplicitUsings>enable</ImplicitUsings>
+        <Nullable>disable</Nullable>
         <LangVersion>latest</LangVersion>
+        <GenerateAssemblyInfo>false</GenerateAssemblyInfo>
     </PropertyGroup>
-    <PropertyGroup Condition=" '$(Configuration)|$(Platform)' == 'Debug|AnyCPU' ">
-        <DebugSymbols>true</DebugSymbols>
-        <DebugType>full</DebugType>
-        <Optimize>false</Optimize>
-        <OutputPath>bin\Debug\</OutputPath>
-        <DefineConstants>DEBUG;TRACE</DefineConstants>
-        <ErrorReport>prompt</ErrorReport>
-        <WarningLevel>4</WarningLevel>
-        <AllowUnsafeBlocks>true</AllowUnsafeBlocks>
-    </PropertyGroup>
-    <PropertyGroup Condition=" '$(Configuration)|$(Platform)' == 'Release|AnyCPU' ">
-        <DebugType>pdbonly</DebugType>
-        <Optimize>true</Optimize>
-        <OutputPath>bin\Release\</OutputPath>
-        <DefineConstants>TRACE</DefineConstants>
-        <ErrorReport>prompt</ErrorReport>
-        <WarningLevel>4</WarningLevel>
-        <AllowUnsafeBlocks>true</AllowUnsafeBlocks>
-    </PropertyGroup>
+
     <ItemGroup>
-        <Compile Include="AnimParamInterpolator .cs"/>
-        <Compile Include="Anti_Cheat.cs"/>
-        <Compile Include="AutoRequestHealthBar.cs"/>
-        <Compile Include="GlobalUsings.cs"/>
-        <Compile Include="HostForceHealthBar.cs"/>
-        <Compile Include="HoldVisualBinder.cs"/>
-        <Compile Include="Main\AI\AIHealth.cs"/>
-        <Compile Include="Main\AI\AIName.cs"/>
-        <Compile Include="Main\AI\AIHandle.cs"/>
-        <Compile Include="Main\AI\AIRequest.cs"/>
-        <Compile Include="Main\AI\AITool.cs"/>
-        <Compile Include="Main\ClientService\ClientPlayer_Apply.cs"/>
-        <Compile Include="Main\ClientService\Client_Handle.cs"/>
-        <Compile Include="Main\ClientService\Sned_ClientStatus.cs"/>
-        <Compile Include="Main\CoopTool.cs"/>
-        <Compile Include="Main\CustomFace.cs"/>
-        <Compile Include="Main\FxManager.cs"/>
-        <Compile Include="Main\Health\Buff.cs"/>
-        <Compile Include="Main\Health\HealthM.cs"/>
-        <Compile Include="Main\Health\HealthTool.cs"/>
-        <Compile Include="Main\Health\HurtM.cs"/>
-        <Compile Include="Main\Item_\ItemHandle.cs"/>
-        <Compile Include="Main\Item_\ItemRequest.cs"/>
-        <Compile Include="Main\Item_\ItemTool.cs"/>
-        <Compile Include="Main\LoaclPlayer\Spectator.cs"/>
-        <Compile Include="Main\Loader\Loader.cs"/>
-        <Compile Include="Main\Op.cs"/>
-        <Compile Include="Main\PublicHandleUpdate.cs"/>
-        <Compile Include="Main\HostService\Host_Handle.cs"/>
-        <Compile Include="Main\LoaclPlayer\LoaclPlayerManager.cs"/>
-        <Compile Include="Main\NetService.cs"/>
-        <Compile Include="Main\HostService\HostPlayer_Apply.cs"/>
-        <Compile Include="Main\LoaclPlayer\Send_LoaclPlayerStatus.cs"/>
-        <Compile Include="Main\SceneService\CreateRemoteCharacter.cs"/>
-        <Compile Include="Main\SceneService\DeadLootBox.cs"/>
-        <Compile Include="Main\SceneService\Destructible.cs"/>
-        <Compile Include="Main\SceneService\Door_.cs"/>
-        <Compile Include="Main\SceneService\LootNet.cs"/>
-        <Compile Include="Main\SceneService\SceneM.cs"/>
-        <Compile Include="Main\SceneService\SceneNet.cs"/>
-        <Compile Include="Main\UI\ModUI.cs"/>
-        <Compile Include="Main\Weapon_\GrenadeM.cs"/>
-        <Compile Include="Main\Weapon_\WeaponHandle.cs"/>
-        <Compile Include="Main\Weapon_\WeaponRequest.cs"/>
-        <Compile Include="Main\Weapon_\WeaponTool.cs"/>
-        <Compile Include="Main\Weather_and_Time\Weather.cs"/>
-        <Compile Include="Net\LocalHitKillFx.cs"/>
-        <Compile Include="Net\NetAiTag.cs"/>
-        <Compile Include="Net\NetAiVisibilityGuard.cs"/>
-        <Compile Include="Net\NetAiFollower.cs"/>
-        <Compile Include="NetTag\NetDestructibleTag.cs"/>
-        <Compile Include="NetTag\NetDropTag.cs"/>
-        <Compile Include="Main\COOPManager.cs"/>
-        <Compile Include="Main\HarmonyFix.cs"/>
-        <Compile Include="Main\Loader\Mod.cs"/>
-        <Compile Include="NetTag\NetGrenadeTag.cs"/>
-        <Compile Include="Net\NetDataExtensions.cs"/>
-        <Compile Include="Net\NetInterpolator.cs"/>
-        <Compile Include="Net\NetPack\NetPack.cs"/>
-        <Compile Include="Net\NetPack\NetPack_Projectile.cs"/>
-        <Compile Include="Net\NetPack\PackFlag.cs"/>
-        <Compile Include="Net\NetSilenceGuards.cs"/>
-        <Compile Include="Net\Steam\SteamP2PManager.cs"/>
-        <Compile Include="Patch\Character_\AICharacterControllerPatch.cs"/>
-        <Compile Include="Patch\Character_\AnimPacth.cs"/>
-        <Compile Include="Patch\Character_\BuffPatch.cs"/>
-        <Compile Include="Patch\Character_\CharacterItemControl_Patch.cs"/>
-        <Compile Include="Patch\Character_\CharacterMainControlPatch.cs"/>
-        <Compile Include="Patch\Character_\CharacterSpawnerRootPatch.cs"/>
-        <Compile Include="Patch\Character_\HealthPatch.cs"/>
-        <Compile Include="Patch\Character_\Health_HurtPacth.cs"/>
-        <Compile Include="Patch\Inventory_and_LootBox\InteractableLootboxPatch.cs"/>
-        <Compile Include="Patch\Inventory_and_LootBox\InventoryPatch.cs"/>
-        <Compile Include="Main\SceneService\LootManager.cs"/>
-        <Compile Include="Patch\Inventory_and_LootBox\LootBoxLoaderPatch.cs"/>
-        <Compile Include="Patch\Inventory_and_LootBox\LootSpawner.cs"/>
-        <Compile Include="Patch\Inventory_and_LootBox\LootViewPatch.cs"/>
-        <Compile Include="Patch\Item_\Grenade_BreaKablePatch.cs"/>
-        <Compile Include="Patch\Item_\GunPatch.cs"/>
-        <Compile Include="Patch\Item_\ItemExtensionsPatch.cs"/>
-        <Compile Include="Patch\Item_\ItemUtilitiesPatch.cs"/>
-        <Compile Include="Patch\Item_\Item_Patch.cs"/>
-        <Compile Include="Patch\Item_\SlotPatch.cs"/>
-        <Compile Include="Patch\Scene\DoorPatch.cs"/>
-        <Compile Include="Patch\Scene\LevelManagerPatch.cs"/>
-        <Compile Include="Patch\Scene\ScenePatch.cs"/>
-        <Compile Include="Properties\AssemblyInfo.cs"/>
-        <Compile Include="SyncData\SyncDataManger.cs"/>
-        <Compile Include="_BuffLateBinder.cs"/>
-    </ItemGroup>
-    <ItemGroup>
-        <None Include="packages.config"/>
-    </ItemGroup>
-    <ItemGroup>
-        <Reference Include="0Harmony, Version=2.3.3.0, Culture=neutral, processorArchitecture=MSIL">
-            <SpecificVersion>False</SpecificVersion>
+        <!-- Shared Dependencies -->
+        <Reference Include="0Harmony">
             <HintPath>..\Shared\0Harmony.dll</HintPath>
         </Reference>
-        <!-- 网络库 LiteNetLib - 来自 Shared 文件夹 -->
-        <Reference Include="LiteNetLib, Version=1.1.0.0, Culture=neutral, processorArchitecture=MSIL">
-            <SpecificVersion>False</SpecificVersion>
+        <Reference Include="LiteNetLib">
             <HintPath>..\Shared\LiteNetLib.dll</HintPath>
         </Reference>
-        <Reference Include="ALINE, Version=0.0.0.0, Culture=neutral, processorArchitecture=MSIL">
-            <SpecificVersion>False</SpecificVersion>
+
+        <Reference Include="ALINE">
             <HintPath>$(DUCKOV_GAME_MANAGED)\ALINE.dll</HintPath>
         </Reference>
-        <Reference Include="andywiecko.BurstTriangulator, Version=0.0.0.0, Culture=neutral, processorArchitecture=MSIL">
-            <SpecificVersion>False</SpecificVersion>
+        <Reference Include="andywiecko.BurstTriangulator">
             <HintPath>$(DUCKOV_GAME_MANAGED)\andywiecko.BurstTriangulator.dll</HintPath>
         </Reference>
-        <Reference Include="Animancer, Version=7.4.2.25, Culture=neutral, processorArchitecture=MSIL">
-            <SpecificVersion>False</SpecificVersion>
+        <Reference Include="Animancer">
             <HintPath>$(DUCKOV_GAME_MANAGED)\Animancer.dll</HintPath>
         </Reference>
-        <Reference Include="Animancer.FSM, Version=7.4.2.25, Culture=neutral, processorArchitecture=MSIL">
-            <SpecificVersion>False</SpecificVersion>
+        <Reference Include="Animancer.FSM">
             <HintPath>$(DUCKOV_GAME_MANAGED)\Animancer.FSM.dll</HintPath>
         </Reference>
-        <Reference Include="AstarPathfindingProject, Version=0.0.0.0, Culture=neutral, processorArchitecture=MSIL">
-            <SpecificVersion>False</SpecificVersion>
+        <Reference Include="AstarPathfindingProject">
             <HintPath>$(DUCKOV_GAME_MANAGED)\AstarPathfindingProject.dll</HintPath>
         </Reference>
-        <Reference Include="BakeryRuntimeAssembly, Version=0.0.0.0, Culture=neutral, processorArchitecture=MSIL">
-            <SpecificVersion>False</SpecificVersion>
+        <Reference Include="BakeryRuntimeAssembly">
             <HintPath>$(DUCKOV_GAME_MANAGED)\BakeryRuntimeAssembly.dll</HintPath>
         </Reference>
-        <Reference Include="Bilibili.BDS, Version=0.0.0.0, Culture=neutral, processorArchitecture=MSIL">
-            <SpecificVersion>False</SpecificVersion>
+        <Reference Include="Bilibili.BDS">
             <HintPath>$(DUCKOV_GAME_MANAGED)\Bilibili.BDS.dll</HintPath>
         </Reference>
-        <Reference Include="Cinemachine, Version=0.0.0.0, Culture=neutral, processorArchitecture=MSIL">
-            <SpecificVersion>False</SpecificVersion>
+        <Reference Include="Cinemachine">
             <HintPath>$(DUCKOV_GAME_MANAGED)\Cinemachine.dll</HintPath>
         </Reference>
-        <Reference Include="Clipper2Lib, Version=1.0.0.0, Culture=neutral, PublicKeyToken=ddeb3f68c442d6e4, processorArchitecture=MSIL">
-            <SpecificVersion>False</SpecificVersion>
+        <Reference Include="Clipper2Lib">
             <HintPath>$(DUCKOV_GAME_MANAGED)\Clipper2Lib.dll</HintPath>
         </Reference>
-        <Reference Include="com.rlabrecque.steamworks.net, Version=0.0.0.0, Culture=neutral, processorArchitecture=MSIL">
-            <SpecificVersion>False</SpecificVersion>
+        <Reference Include="com.rlabrecque.steamworks.net">
             <HintPath>$(DUCKOV_GAME_MANAGED)\com.rlabrecque.steamworks.net.dll</HintPath>
         </Reference>
-        <Reference Include="DOTween, Version=1.0.0.0, Culture=neutral, processorArchitecture=MSIL">
-            <SpecificVersion>False</SpecificVersion>
+        <Reference Include="DOTween">
             <HintPath>$(DUCKOV_GAME_MANAGED)\DOTween.dll</HintPath>
         </Reference>
-        <Reference Include="DOTween.Modules, Version=0.0.0.0, Culture=neutral, processorArchitecture=MSIL">
-            <SpecificVersion>False</SpecificVersion>
+        <Reference Include="DOTween.Modules">
             <HintPath>$(DUCKOV_GAME_MANAGED)\DOTween.Modules.dll</HintPath>
         </Reference>
-        <Reference Include="DOTweenPro, Version=1.0.0.0, Culture=neutral, processorArchitecture=MSIL">
-            <SpecificVersion>False</SpecificVersion>
+        <Reference Include="DOTweenPro">
             <HintPath>$(DUCKOV_GAME_MANAGED)\DOTweenPro.dll</HintPath>
         </Reference>
-        <Reference Include="Drawing, Version=0.0.0.0, Culture=neutral, processorArchitecture=MSIL">
-            <SpecificVersion>False</SpecificVersion>
+        <Reference Include="Drawing">
             <HintPath>$(DUCKOV_GAME_MANAGED)\Drawing.dll</HintPath>
         </Reference>
-        <Reference Include="Eflatun.SceneReference, Version=0.0.0.0, Culture=neutral, processorArchitecture=MSIL">
-            <SpecificVersion>False</SpecificVersion>
+        <Reference Include="Eflatun.SceneReference">
             <HintPath>$(DUCKOV_GAME_MANAGED)\Eflatun.SceneReference.dll</HintPath>
         </Reference>
         <Reference Include="FMODUnity">
             <HintPath>$(DUCKOV_GAME_MANAGED)\FMODUnity.dll</HintPath>
         </Reference>
-        <Reference Include="ICSharpCode.SharpZipLib, Version=2.86.0.518, Culture=neutral, PublicKeyToken=1b03e6acf1164f73, processorArchitecture=MSIL">
-            <SpecificVersion>False</SpecificVersion>
+        <Reference Include="ICSharpCode.SharpZipLib">
             <HintPath>$(DUCKOV_GAME_MANAGED)\ICSharpCode.SharpZipLib.dll</HintPath>
         </Reference>
-        <Reference Include="ItemStatsSystem, Version=0.0.0.0, Culture=neutral, processorArchitecture=MSIL">
-            <SpecificVersion>False</SpecificVersion>
+        <Reference Include="ItemStatsSystem">
             <HintPath>$(DUCKOV_GAME_MANAGED)\ItemStatsSystem.dll</HintPath>
         </Reference>
-        <Reference Include="LeTai.TranslucentImage, Version=0.0.0.0, Culture=neutral, processorArchitecture=MSIL">
-            <SpecificVersion>False</SpecificVersion>
+        <Reference Include="LeTai.TranslucentImage">
             <HintPath>$(DUCKOV_GAME_MANAGED)\LeTai.TranslucentImage.dll</HintPath>
         </Reference>
-        <Reference Include="LeTai.TranslucentImage.Demo, Version=0.0.0.0, Culture=neutral, processorArchitecture=MSIL">
-            <SpecificVersion>False</SpecificVersion>
+        <Reference Include="LeTai.TranslucentImage.Demo">
             <HintPath>$(DUCKOV_GAME_MANAGED)\LeTai.TranslucentImage.Demo.dll</HintPath>
         </Reference>
-        <Reference Include="LeTai.TranslucentImage.UniversalRP, Version=0.0.0.0, Culture=neutral, processorArchitecture=MSIL">
-            <SpecificVersion>False</SpecificVersion>
+        <Reference Include="LeTai.TranslucentImage.UniversalRP">
             <HintPath>$(DUCKOV_GAME_MANAGED)\LeTai.TranslucentImage.UniversalRP.dll</HintPath>
         </Reference>
-        <Reference Include="LeTai.TrueShadow, Version=0.0.0.0, Culture=neutral, processorArchitecture=MSIL">
-            <SpecificVersion>False</SpecificVersion>
+        <Reference Include="LeTai.TrueShadow">
             <HintPath>$(DUCKOV_GAME_MANAGED)\LeTai.TrueShadow.dll</HintPath>
         </Reference>
-        <Reference Include="Mono.Cecil, Version=0.11.6.0, Culture=neutral, PublicKeyToken=50cebf1cceb9d05e, processorArchitecture=MSIL">
+        <Reference Include="Mono.Cecil">
             <HintPath>..\packages\Mono.Cecil.0.11.6\lib\net40\Mono.Cecil.dll</HintPath>
         </Reference>
-        <Reference Include="Mono.Cecil.Mdb, Version=0.11.6.0, Culture=neutral, PublicKeyToken=50cebf1cceb9d05e, processorArchitecture=MSIL">
+        <Reference Include="Mono.Cecil.Mdb">
             <HintPath>..\packages\Mono.Cecil.0.11.6\lib\net40\Mono.Cecil.Mdb.dll</HintPath>
         </Reference>
-        <Reference Include="Mono.Cecil.Pdb, Version=0.11.6.0, Culture=neutral, PublicKeyToken=50cebf1cceb9d05e, processorArchitecture=MSIL">
+        <Reference Include="Mono.Cecil.Pdb">
             <HintPath>..\packages\Mono.Cecil.0.11.6\lib\net40\Mono.Cecil.Pdb.dll</HintPath>
         </Reference>
-        <Reference Include="Mono.Cecil.Rocks, Version=0.11.6.0, Culture=neutral, PublicKeyToken=50cebf1cceb9d05e, processorArchitecture=MSIL">
+        <Reference Include="Mono.Cecil.Rocks">
             <HintPath>..\packages\Mono.Cecil.0.11.6\lib\net40\Mono.Cecil.Rocks.dll</HintPath>
         </Reference>
-        <Reference Include="MonoMod.Backports, Version=1.1.2.0, Culture=neutral, processorArchitecture=MSIL">
+        <Reference Include="MonoMod.Backports">
             <HintPath>..\packages\MonoMod.Backports.1.1.2\lib\net452\MonoMod.Backports.dll</HintPath>
         </Reference>
-        <Reference Include="MonoMod.Core, Version=1.3.0.0, Culture=neutral, processorArchitecture=MSIL">
+        <Reference Include="MonoMod.Core">
             <HintPath>..\packages\MonoMod.Core.1.3.0\lib\net452\MonoMod.Core.dll</HintPath>
         </Reference>
-        <Reference Include="MonoMod.Iced, Version=1.21.0.0, Culture=neutral, processorArchitecture=MSIL">
+        <Reference Include="MonoMod.Iced">
             <HintPath>..\packages\MonoMod.Core.1.3.0\lib\net452\MonoMod.Iced.dll</HintPath>
         </Reference>
-        <Reference Include="MonoMod.ILHelpers, Version=1.1.0.0, Culture=neutral, processorArchitecture=MSIL">
+        <Reference Include="MonoMod.ILHelpers">
             <HintPath>..\packages\MonoMod.ILHelpers.1.1.0\lib\net452\MonoMod.ILHelpers.dll</HintPath>
         </Reference>
-        <Reference Include="MonoMod.RuntimeDetour, Version=25.3.0.0, Culture=neutral, processorArchitecture=MSIL">
+        <Reference Include="MonoMod.RuntimeDetour">
             <HintPath>..\packages\MonoMod.RuntimeDetour.25.3.0\lib\net452\MonoMod.RuntimeDetour.dll</HintPath>
         </Reference>
-        <Reference Include="MonoMod.Utils, Version=25.0.8.0, Culture=neutral, processorArchitecture=MSIL">
+        <Reference Include="MonoMod.Utils">
             <HintPath>..\packages\MonoMod.Utils.25.0.8\lib\net452\MonoMod.Utils.dll</HintPath>
         </Reference>
-        <Reference Include="Newtonsoft.Json, Version=13.0.0.0, Culture=neutral, PublicKeyToken=30ad4fe6b2a6aeed, processorArchitecture=MSIL">
-            <SpecificVersion>False</SpecificVersion>
+        <Reference Include="Newtonsoft.Json">
             <HintPath>$(DUCKOV_GAME_MANAGED)\Newtonsoft.Json.dll</HintPath>
         </Reference>
-        <Reference Include="NodeCanvas, Version=0.0.0.0, Culture=neutral, processorArchitecture=MSIL">
-            <SpecificVersion>False</SpecificVersion>
+        <Reference Include="NodeCanvas">
             <HintPath>$(DUCKOV_GAME_MANAGED)\NodeCanvas.dll</HintPath>
         </Reference>
-        <Reference Include="PackageTools, Version=0.0.0.0, Culture=neutral, processorArchitecture=MSIL">
-            <SpecificVersion>False</SpecificVersion>
+        <Reference Include="PackageTools">
             <HintPath>$(DUCKOV_GAME_MANAGED)\PackageTools.dll</HintPath>
         </Reference>
-        <Reference Include="ParadoxNotion, Version=0.0.0.0, Culture=neutral, processorArchitecture=MSIL">
-            <SpecificVersion>False</SpecificVersion>
+        <Reference Include="ParadoxNotion">
             <HintPath>$(DUCKOV_GAME_MANAGED)\ParadoxNotion.dll</HintPath>
         </Reference>
-        <Reference Include="Pathfinding.Ionic.Zip.Reduced, Version=1.9.1.9000, Culture=neutral, processorArchitecture=MSIL">
-            <SpecificVersion>False</SpecificVersion>
+        <Reference Include="Pathfinding.Ionic.Zip.Reduced">
             <HintPath>$(DUCKOV_GAME_MANAGED)\Pathfinding.Ionic.Zip.Reduced.dll</HintPath>
         </Reference>
-        <Reference Include="Plugins, Version=0.0.0.0, Culture=neutral, processorArchitecture=MSIL">
-            <SpecificVersion>False</SpecificVersion>
+        <Reference Include="Plugins">
             <HintPath>$(DUCKOV_GAME_MANAGED)\Plugins.dll</HintPath>
         </Reference>
-        <Reference Include="ShapesSamples, Version=0.0.0.0, Culture=neutral, processorArchitecture=MSIL">
-            <SpecificVersion>False</SpecificVersion>
+        <Reference Include="ShapesSamples">
             <HintPath>$(DUCKOV_GAME_MANAGED)\ShapesSamples.dll</HintPath>
         </Reference>
-        <Reference Include="Sirenix.OdinInspector.Attributes, Version=1.0.0.0, Culture=neutral, processorArchitecture=MSIL">
-            <SpecificVersion>False</SpecificVersion>
+        <Reference Include="Sirenix.OdinInspector.Attributes">
             <HintPath>$(DUCKOV_GAME_MANAGED)\Sirenix.OdinInspector.Attributes.dll</HintPath>
         </Reference>
-        <Reference Include="Sirenix.Serialization, Version=1.0.0.0, Culture=neutral, processorArchitecture=MSIL">
-            <SpecificVersion>False</SpecificVersion>
+        <Reference Include="Sirenix.Serialization">
             <HintPath>$(DUCKOV_GAME_MANAGED)\Sirenix.Serialization.dll</HintPath>
         </Reference>
-        <Reference Include="Sirenix.Serialization.Config, Version=1.0.0.0, Culture=neutral, processorArchitecture=MSIL">
-            <SpecificVersion>False</SpecificVersion>
+        <Reference Include="Sirenix.Serialization.Config">
             <HintPath>$(DUCKOV_GAME_MANAGED)\Sirenix.Serialization.Config.dll</HintPath>
         </Reference>
-        <Reference Include="Sirenix.Utilities, Version=1.0.0.0, Culture=neutral, processorArchitecture=MSIL">
-            <SpecificVersion>False</SpecificVersion>
+        <Reference Include="Sirenix.Utilities">
             <HintPath>$(DUCKOV_GAME_MANAGED)\Sirenix.Utilities.dll</HintPath>
         </Reference>
-        <Reference Include="SymmetryBreak.TastyGrassShader, Version=0.0.0.0, Culture=neutral, processorArchitecture=MSIL">
-            <SpecificVersion>False</SpecificVersion>
+        <Reference Include="SymmetryBreak.TastyGrassShader">
             <HintPath>$(DUCKOV_GAME_MANAGED)\SymmetryBreak.TastyGrassShader.dll</HintPath>
         </Reference>
-        <Reference Include="SymmetryBreakStudio.TastyGrassShader.Examples, Version=0.0.0.0, Culture=neutral, processorArchitecture=MSIL">
-            <SpecificVersion>False</SpecificVersion>
+        <Reference Include="SymmetryBreakStudio.TastyGrassShader.Examples">
             <HintPath>$(DUCKOV_GAME_MANAGED)\SymmetryBreakStudio.TastyGrassShader.Examples.dll</HintPath>
         </Reference>
         <Reference Include="System"/>
         <Reference Include="System.Collections"/>
         <Reference Include="System.ComponentModel.Composition"/>
         <Reference Include="System.Configuration"/>
-        <Reference Include="System.ValueTuple, Version=4.0.3.0, Culture=neutral, PublicKeyToken=cc7b13ffcd2ddd51, processorArchitecture=MSIL">
+        <Reference Include="System.ValueTuple">
             <HintPath>..\packages\System.ValueTuple.4.5.0\lib\net47\System.ValueTuple.dll</HintPath>
         </Reference>
-        <Reference Include="TeamSoda.Duckov.Core, Version=0.0.0.0, Culture=neutral, processorArchitecture=MSIL">
-            <SpecificVersion>False</SpecificVersion>
+        <Reference Include="TeamSoda.Duckov.Core">
             <HintPath>$(DUCKOV_GAME_MANAGED)\TeamSoda.Duckov.Core.dll</HintPath>
         </Reference>
-        <Reference Include="TeamSoda.Duckov.Utilities, Version=0.0.0.0, Culture=neutral, processorArchitecture=MSIL">
-            <SpecificVersion>False</SpecificVersion>
+        <Reference Include="TeamSoda.Duckov.Utilities">
             <HintPath>$(DUCKOV_GAME_MANAGED)\TeamSoda.Duckov.Utilities.dll</HintPath>
         </Reference>
-        <Reference Include="TeamSoda.MiniLocalizor, Version=0.0.0.0, Culture=neutral, processorArchitecture=MSIL">
-            <SpecificVersion>False</SpecificVersion>
+        <Reference Include="TeamSoda.MiniLocalizor">
             <HintPath>$(DUCKOV_GAME_MANAGED)\TeamSoda.MiniLocalizor.dll</HintPath>
         </Reference>
-        <Reference Include="UISplineRenderer, Version=0.0.0.0, Culture=neutral, processorArchitecture=MSIL">
-            <SpecificVersion>False</SpecificVersion>
+        <Reference Include="UISplineRenderer">
             <HintPath>$(DUCKOV_GAME_MANAGED)\UISplineRenderer.dll</HintPath>
         </Reference>
-        <Reference Include="UniTask, Version=0.0.0.0, Culture=neutral, processorArchitecture=MSIL">
-            <SpecificVersion>False</SpecificVersion>
+        <Reference Include="UniTask">
             <HintPath>$(DUCKOV_GAME_MANAGED)\UniTask.dll</HintPath>
         </Reference>
-        <Reference Include="UniTask.Addressables, Version=0.0.0.0, Culture=neutral, processorArchitecture=MSIL">
-            <SpecificVersion>False</SpecificVersion>
+        <Reference Include="UniTask.Addressables">
             <HintPath>$(DUCKOV_GAME_MANAGED)\UniTask.Addressables.dll</HintPath>
         </Reference>
-        <Reference Include="UniTask.DOTween, Version=0.0.0.0, Culture=neutral, processorArchitecture=MSIL">
-            <SpecificVersion>False</SpecificVersion>
+        <Reference Include="UniTask.DOTween">
             <HintPath>$(DUCKOV_GAME_MANAGED)\UniTask.DOTween.dll</HintPath>
         </Reference>
-        <Reference Include="UniTask.TextMeshPro, Version=0.0.0.0, Culture=neutral, processorArchitecture=MSIL">
-            <SpecificVersion>False</SpecificVersion>
+        <Reference Include="UniTask.TextMeshPro">
             <HintPath>$(DUCKOV_GAME_MANAGED)\UniTask.TextMeshPro.dll</HintPath>
         </Reference>
-        <Reference Include="Unity.Burst, Version=0.0.0.0, Culture=neutral, processorArchitecture=MSIL">
-            <SpecificVersion>False</SpecificVersion>
+        <Reference Include="Unity.Burst">
             <HintPath>$(DUCKOV_GAME_MANAGED)\Unity.Burst.dll</HintPath>
         </Reference>
-        <Reference Include="Unity.InputSystem, Version=1.11.1.0, Culture=neutral, processorArchitecture=MSIL">
-            <SpecificVersion>False</SpecificVersion>
+        <Reference Include="Unity.InputSystem">
             <HintPath>$(DUCKOV_GAME_MANAGED)\Unity.InputSystem.dll</HintPath>
         </Reference>
-        <Reference Include="Unity.InputSystem.ForUI, Version=0.0.0.0, Culture=neutral, processorArchitecture=MSIL">
-            <SpecificVersion>False</SpecificVersion>
+        <Reference Include="Unity.InputSystem.ForUI">
             <HintPath>$(DUCKOV_GAME_MANAGED)\Unity.InputSystem.ForUI.dll</HintPath>
         </Reference>
-        <Reference Include="Unity.TextMeshPro, Version=0.0.0.0, Culture=neutral, processorArchitecture=MSIL">
-            <SpecificVersion>False</SpecificVersion>
+        <Reference Include="Unity.TextMeshPro">
             <HintPath>$(DUCKOV_GAME_MANAGED)\Unity.TextMeshPro.dll</HintPath>
         </Reference>
-        <Reference Include="Unity.VisualScripting.Core, Version=0.0.0.0, Culture=neutral, processorArchitecture=MSIL">
-            <SpecificVersion>False</SpecificVersion>
+        <Reference Include="Unity.VisualScripting.Core">
             <HintPath>$(DUCKOV_GAME_MANAGED)\Unity.VisualScripting.Core.dll</HintPath>
         </Reference>
-        <Reference Include="UnityEngine, Version=0.0.0.0, Culture=neutral, processorArchitecture=MSIL">
-            <SpecificVersion>False</SpecificVersion>
+        <Reference Include="UnityEngine">
             <HintPath>$(DUCKOV_GAME_MANAGED)\UnityEngine.dll</HintPath>
         </Reference>
         <Reference Include="UnityEngine.AccessibilityModule">
             <HintPath>$(DUCKOV_GAME_MANAGED)\UnityEngine.AccessibilityModule.dll</HintPath>
         </Reference>
-        <Reference Include="UnityEngine.AIModule, Version=0.0.0.0, Culture=neutral, processorArchitecture=MSIL">
-            <SpecificVersion>False</SpecificVersion>
+        <Reference Include="UnityEngine.AIModule">
             <HintPath>$(DUCKOV_GAME_MANAGED)\UnityEngine.AIModule.dll</HintPath>
         </Reference>
-        <Reference Include="UnityEngine.AndroidJNIModule, Version=0.0.0.0, Culture=neutral, processorArchitecture=MSIL">
-            <SpecificVersion>False</SpecificVersion>
+        <Reference Include="UnityEngine.AndroidJNIModule">
             <HintPath>$(DUCKOV_GAME_MANAGED)\UnityEngine.AndroidJNIModule.dll</HintPath>
         </Reference>
-        <Reference Include="UnityEngine.AnimationModule, Version=0.0.0.0, Culture=neutral, processorArchitecture=MSIL">
-            <SpecificVersion>False</SpecificVersion>
+        <Reference Include="UnityEngine.AnimationModule">
             <HintPath>$(DUCKOV_GAME_MANAGED)\UnityEngine.AnimationModule.dll</HintPath>
         </Reference>
         <Reference Include="UnityEngine.ARModule">
             <HintPath>$(DUCKOV_GAME_MANAGED)\UnityEngine.ARModule.dll</HintPath>
         </Reference>
-        <Reference Include="UnityEngine.AssetBundleModule, Version=0.0.0.0, Culture=neutral, processorArchitecture=MSIL">
-            <SpecificVersion>False</SpecificVersion>
+        <Reference Include="UnityEngine.AssetBundleModule">
             <HintPath>$(DUCKOV_GAME_MANAGED)\UnityEngine.AssetBundleModule.dll</HintPath>
         </Reference>
-        <Reference Include="UnityEngine.AudioModule, Version=0.0.0.0, Culture=neutral, processorArchitecture=MSIL">
-            <SpecificVersion>False</SpecificVersion>
+        <Reference Include="UnityEngine.AudioModule">
             <HintPath>$(DUCKOV_GAME_MANAGED)\UnityEngine.AudioModule.dll</HintPath>
         </Reference>
-        <Reference Include="UnityEngine.ClothModule, Version=0.0.0.0, Culture=neutral, processorArchitecture=MSIL">
-            <SpecificVersion>False</SpecificVersion>
+        <Reference Include="UnityEngine.ClothModule">
             <HintPath>$(DUCKOV_GAME_MANAGED)\UnityEngine.ClothModule.dll</HintPath>
         </Reference>
         <Reference Include="UnityEngine.ClusterInputModule">
@@ -405,97 +231,80 @@
         <Reference Include="UnityEngine.ClusterRendererModule">
             <HintPath>$(DUCKOV_GAME_MANAGED)\UnityEngine.ClusterRendererModule.dll</HintPath>
         </Reference>
-        <Reference Include="UnityEngine.ContentLoadModule, Version=0.0.0.0, Culture=neutral, processorArchitecture=MSIL">
-            <SpecificVersion>False</SpecificVersion>
+        <Reference Include="UnityEngine.ContentLoadModule">
             <HintPath>$(DUCKOV_GAME_MANAGED)\UnityEngine.ContentLoadModule.dll</HintPath>
         </Reference>
-        <Reference Include="UnityEngine.CoreModule, Version=0.0.0.0, Culture=neutral, processorArchitecture=MSIL">
-            <SpecificVersion>False</SpecificVersion>
+        <Reference Include="UnityEngine.CoreModule">
             <HintPath>$(DUCKOV_GAME_MANAGED)\UnityEngine.CoreModule.dll</HintPath>
         </Reference>
         <Reference Include="UnityEngine.CrashReportingModule">
             <HintPath>$(DUCKOV_GAME_MANAGED)\UnityEngine.CrashReportingModule.dll</HintPath>
         </Reference>
-        <Reference Include="UnityEngine.DirectorModule, Version=0.0.0.0, Culture=neutral, processorArchitecture=MSIL">
-            <SpecificVersion>False</SpecificVersion>
+        <Reference Include="UnityEngine.DirectorModule">
             <HintPath>$(DUCKOV_GAME_MANAGED)\UnityEngine.DirectorModule.dll</HintPath>
         </Reference>
         <Reference Include="UnityEngine.DSPGraphModule">
             <HintPath>$(DUCKOV_GAME_MANAGED)\UnityEngine.DSPGraphModule.dll</HintPath>
         </Reference>
-        <Reference Include="UnityEngine.GameCenterModule, Version=0.0.0.0, Culture=neutral, processorArchitecture=MSIL">
-            <SpecificVersion>False</SpecificVersion>
+        <Reference Include="UnityEngine.GameCenterModule">
             <HintPath>$(DUCKOV_GAME_MANAGED)\UnityEngine.GameCenterModule.dll</HintPath>
         </Reference>
-        <Reference Include="UnityEngine.GIModule, Version=0.0.0.0, Culture=neutral, processorArchitecture=MSIL">
-            <SpecificVersion>False</SpecificVersion>
+        <Reference Include="UnityEngine.GIModule">
             <HintPath>$(DUCKOV_GAME_MANAGED)\UnityEngine.GIModule.dll</HintPath>
         </Reference>
-        <Reference Include="UnityEngine.GridModule, Version=0.0.0.0, Culture=neutral, processorArchitecture=MSIL">
-            <SpecificVersion>False</SpecificVersion>
+        <Reference Include="UnityEngine.GridModule">
             <HintPath>$(DUCKOV_GAME_MANAGED)\UnityEngine.GridModule.dll</HintPath>
         </Reference>
-        <Reference Include="UnityEngine.HotReloadModule, Version=0.0.0.0, Culture=neutral, processorArchitecture=MSIL">
-            <SpecificVersion>False</SpecificVersion>
+        <Reference Include="UnityEngine.HotReloadModule">
             <HintPath>$(DUCKOV_GAME_MANAGED)\UnityEngine.HotReloadModule.dll</HintPath>
         </Reference>
-        <Reference Include="UnityEngine.ImageConversionModule, Version=0.0.0.0, Culture=neutral, processorArchitecture=MSIL">
-            <SpecificVersion>False</SpecificVersion>
+        <Reference Include="UnityEngine.ImageConversionModule">
             <HintPath>$(DUCKOV_GAME_MANAGED)\UnityEngine.ImageConversionModule.dll</HintPath>
         </Reference>
-        <Reference Include="UnityEngine.IMGUIModule, Version=0.0.0.0, Culture=neutral, processorArchitecture=MSIL">
-            <SpecificVersion>False</SpecificVersion>
+        <Reference Include="UnityEngine.IMGUIModule">
             <HintPath>$(DUCKOV_GAME_MANAGED)\UnityEngine.IMGUIModule.dll</HintPath>
         </Reference>
-        <Reference Include="UnityEngine.InputLegacyModule, Version=0.0.0.0, Culture=neutral, processorArchitecture=MSIL">
-            <SpecificVersion>False</SpecificVersion>
+        <Reference Include="UnityEngine.InputLegacyModule">
             <HintPath>$(DUCKOV_GAME_MANAGED)\UnityEngine.InputLegacyModule.dll</HintPath>
         </Reference>
-        <Reference Include="UnityEngine.InputModule, Version=0.0.0.0, Culture=neutral, processorArchitecture=MSIL">
-            <SpecificVersion>False</SpecificVersion>
+        <Reference Include="UnityEngine.InputModule">
             <HintPath>$(DUCKOV_GAME_MANAGED)\UnityEngine.InputModule.dll</HintPath>
         </Reference>
-        <Reference Include="UnityEngine.JSONSerializeModule, Version=0.0.0.0, Culture=neutral, processorArchitecture=MSIL">
-            <SpecificVersion>False</SpecificVersion>
+        <Reference Include="UnityEngine.JSONSerializeModule">
             <HintPath>$(DUCKOV_GAME_MANAGED)\UnityEngine.JSONSerializeModule.dll</HintPath>
         </Reference>
         <Reference Include="UnityEngine.LocalizationModule">
             <HintPath>$(DUCKOV_GAME_MANAGED)\UnityEngine.LocalizationModule.dll</HintPath>
         </Reference>
-        <Reference Include="UnityEngine.ParticleSystemModule, Version=0.0.0.0, Culture=neutral, processorArchitecture=MSIL">
-            <SpecificVersion>False</SpecificVersion>
+        <Reference Include="UnityEngine.ParticleSystemModule">
             <HintPath>$(DUCKOV_GAME_MANAGED)\UnityEngine.ParticleSystemModule.dll</HintPath>
         </Reference>
-        <Reference Include="UnityEngine.Physics2DModule, Version=0.0.0.0, Culture=neutral, processorArchitecture=MSIL">
-            <SpecificVersion>False</SpecificVersion>
+        <Reference Include="UnityEngine.Physics2DModule">
             <HintPath>$(DUCKOV_GAME_MANAGED)\UnityEngine.Physics2DModule.dll</HintPath>
         </Reference>
-        <Reference Include="UnityEngine.PhysicsModule, Version=0.0.0.0, Culture=neutral, processorArchitecture=MSIL">
-            <SpecificVersion>False</SpecificVersion>
+        <Reference Include="UnityEngine.PhysicsModule">
             <HintPath>$(DUCKOV_GAME_MANAGED)\UnityEngine.PhysicsModule.dll</HintPath>
         </Reference>
-        <Reference Include="UnityEngine.ProfilerModule, Version=0.0.0.0, Culture=neutral, processorArchitecture=MSIL">
-            <SpecificVersion>False</SpecificVersion>
+        <Reference Include="UnityEngine.ProfilerModule">
             <HintPath>$(DUCKOV_GAME_MANAGED)\UnityEngine.ProfilerModule.dll</HintPath>
         </Reference>
-        <Reference Include="UnityEngine.TextRenderingModule, Version=0.0.0.0, Culture=neutral, processorArchitecture=MSIL">
-            <SpecificVersion>False</SpecificVersion>
+        <Reference Include="UnityEngine.TextRenderingModule">
             <HintPath>$(DUCKOV_GAME_MANAGED)\UnityEngine.TextRenderingModule.dll</HintPath>
         </Reference>
-        <Reference Include="UnityEngine.ScreenCaptureModule, Version=0.0.0.0, Culture=neutral, processorArchitecture=MSIL">
-            <SpecificVersion>False</SpecificVersion>
+        <Reference Include="UnityEngine.ScreenCaptureModule">
             <HintPath>$(DUCKOV_GAME_MANAGED)\UnityEngine.ScreenCaptureModule.dll</HintPath>
         </Reference>
-        <Reference Include="UnityEngine.UI, Version=1.0.0.0, Culture=neutral, processorArchitecture=MSIL">
-            <SpecificVersion>False</SpecificVersion>
+        <Reference Include="UnityEngine.UI">
             <HintPath>$(DUCKOV_GAME_MANAGED)\UnityEngine.UI.dll</HintPath>
         </Reference>
     </ItemGroup>
 
     <Target Name="CopyToModsFolder" AfterTargets="Build">
-        <Copy SourceFiles="$(OutputPath)\$(AssemblyName).dll" DestinationFolder="$(DUCKOV_MODS_DIRECTORY)\$(ProjectName)" SkipUnchangedFiles="true"/>
-        <Message Text="Copied DLL -&gt; $(DUCKOV_MODS_DIRECTORY)\$(ProjectName)\$(AssemblyName).dll" Importance="High"/>
-    </Target>
+        <PropertyGroup>
+            <_ModFolder>$(DUCKOV_MODS_DIRECTORY)\$(ProjectName)</_ModFolder>
+        </PropertyGroup>
 
-    <Import Project="$(MSBuildToolsPath)\Microsoft.CSharp.targets"/>
+        <Copy SourceFiles="$(OutputPath)\$(AssemblyName).dll" DestinationFolder="$(_ModFolder)" SkipUnchangedFiles="true"/>
+        <Message Text="Copied DLL -&gt; $(_ModFolder)\$(AssemblyName).dll" Importance="High"/>
+    </Target>
 </Project>

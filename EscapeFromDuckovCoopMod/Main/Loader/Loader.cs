@@ -14,8 +14,6 @@
 // MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
 // GNU Affero General Public License for more details.
 
-using System;
-
 namespace EscapeFromDuckovCoopMod;
 
 public class ModBehaviour : Duckov.Modding.ModBehaviour
@@ -45,7 +43,7 @@ public class ModBehaviour : Duckov.Modding.ModBehaviour
         go.AddComponent<Send_ClientStatus>();
         go.AddComponent<HealthM>();
         go.AddComponent<LoaclPlayerManager>();
-        go.AddComponent<Send_LoaclPlayerStatus>();
+        go.AddComponent<SendLocalPlayerStatus>();
         go.AddComponent<Spectator>();
         go.AddComponent<DeadLootBox>();
         go.AddComponent<LootManager>();
@@ -62,7 +60,7 @@ public class ModBehaviour : Duckov.Modding.ModBehaviour
         SafeInit<LootManager>(lm => lm.Init());
         SafeInit<LoaclPlayerManager>(lpm => lpm.Init());
         SafeInit<HealthM>(hm => hm.Init());
-        SafeInit<Send_LoaclPlayerStatus>(s => s.Init());
+        SafeInit<SendLocalPlayerStatus>(s => s.Init());
         SafeInit<Spectator>(s => s.Init());
         SafeInit<ModUI>(ui => ui.Init());
         SafeInit<AIRequest>(a => a.Init());

@@ -14,8 +14,6 @@
 // MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
 // GNU Affero General Public License for more details.
 
-using System;
-using System.Threading.Tasks;
 using Duckov.Buffs;
 using ItemStatsSystem;
 using Object = UnityEngine.Object;
@@ -24,46 +22,46 @@ namespace EscapeFromDuckovCoopMod;
 
 public class COOPManager
 {
-    public static HostPlayer_Apply HostPlayer_Apply;
+    public static HostPlayerApply HostPlayer_Apply;
 
-    public static ClientPlayer_Apply ClientPlayer_Apply;
+    public static ClientPlayerApply ClientPlayer_Apply;
     public static LootNet LootNet;
     public static AIHandle AIHandle;
-    public static Door_ Door;
+    public static Door Door;
     public static Destructible destructible;
     public static GrenadeM GrenadeM;
     public static HurtM HurtM;
     public static WeaponHandle WeaponHandle;
     public static Weather Weather;
-    public static Client_Handle ClientHandle;
+    public static ClientHandle ClientHandle;
     public static PublicHandleUpdate PublicHandleUpdate;
     public static ItemHandle ItemHandle;
     public static AIHealth AIHealth;
     public static Buff_ Buff;
     public static WeaponRequest WeaponRequest;
-    public static Host_Handle Host_Handle;
+    public static HostHandle Host_Handle;
     public static ItemRequest ItemRequest;
     private NetService Service => NetService.Instance;
 
     public static void InitManager()
     {
-        HostPlayer_Apply = new HostPlayer_Apply();
-        ClientPlayer_Apply = new ClientPlayer_Apply();
+        HostPlayer_Apply = new HostPlayerApply();
+        ClientPlayer_Apply = new ClientPlayerApply();
         LootNet = new LootNet();
         AIHandle = new AIHandle();
-        Door = new Door_();
+        Door = new Door();
         destructible = new Destructible();
         GrenadeM = new GrenadeM();
         HurtM = new HurtM();
         WeaponHandle = new WeaponHandle();
         Weather = new Weather();
-        ClientHandle = new Client_Handle();
+        ClientHandle = new ClientHandle();
         PublicHandleUpdate = new PublicHandleUpdate();
         ItemHandle = new ItemHandle();
         AIHealth = new AIHealth();
         Buff = new Buff_();
         WeaponRequest = new WeaponRequest();
-        Host_Handle = new Host_Handle();
+        Host_Handle = new HostHandle();
         ItemRequest = new ItemRequest();
     }
 

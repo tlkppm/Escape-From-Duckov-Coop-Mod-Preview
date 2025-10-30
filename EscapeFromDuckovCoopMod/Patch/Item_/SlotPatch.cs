@@ -16,6 +16,7 @@
 
 using ItemStatsSystem;
 using ItemStatsSystem.Items;
+using Object = UnityEngine.Object;
 
 namespace EscapeFromDuckovCoopMod;
 

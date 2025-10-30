@@ -17,6 +17,7 @@
 using System.Reflection;
 using Duckov.Utilities;
 using Duckov.Weathers;
+using Object = UnityEngine.Object;
 
 namespace EscapeFromDuckovCoopMod;
 

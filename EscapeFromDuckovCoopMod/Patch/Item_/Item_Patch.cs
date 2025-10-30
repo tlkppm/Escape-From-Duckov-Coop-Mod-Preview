@@ -15,6 +15,7 @@
 // GNU Affero General Public License for more details.
 
 using ItemStatsSystem;
+using Object = UnityEngine.Object;
 
 namespace EscapeFromDuckovCoopMod;
 

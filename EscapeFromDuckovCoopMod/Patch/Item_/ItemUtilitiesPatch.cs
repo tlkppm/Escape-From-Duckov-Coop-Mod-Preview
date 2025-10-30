@@ -17,6 +17,7 @@
 using System.Reflection;
 using Duckov.UI;
 using ItemStatsSystem;
+using Object = UnityEngine.Object;
 
 namespace EscapeFromDuckovCoopMod;
 

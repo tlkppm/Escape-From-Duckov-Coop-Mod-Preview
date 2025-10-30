@@ -14,8 +14,6 @@
 // MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
 // GNU Affero General Public License for more details.
 
-using System;
-using System.Linq;
 using Duckov.UI;
 using ItemStatsSystem;
 using Object = UnityEngine.Object;

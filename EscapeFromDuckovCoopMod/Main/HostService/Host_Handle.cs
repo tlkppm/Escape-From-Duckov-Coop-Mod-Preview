@@ -15,6 +15,7 @@
 // GNU Affero General Public License for more details.
 
 using static EscapeFromDuckovCoopMod.LootNet;
+using Object = UnityEngine.Object;
 
 namespace EscapeFromDuckovCoopMod;
 

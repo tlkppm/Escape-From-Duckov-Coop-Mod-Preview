@@ -1,132 +1,13 @@
-﻿<?xml version="1.0" encoding="utf-8"?>
-<Project ToolsVersion="15.0" xmlns="http://schemas.microsoft.com/developer/msbuild/2003">
-    <Import Project="$(MSBuildExtensionsPath)\$(MSBuildToolsVersion)\Microsoft.Common.props" Condition="Exists('$(MSBuildExtensionsPath)\$(MSBuildToolsVersion)\Microsoft.Common.props')"/>
+﻿<Project Sdk="Microsoft.NET.Sdk">
+
     <PropertyGroup>
-        <Configuration Condition=" '$(Configuration)' == '' ">Debug</Configuration>
-        <Platform Condition=" '$(Platform)' == '' ">AnyCPU</Platform>
-        <ProjectGuid>{C8C48E3C-68BF-4A39-9FB4-DBDB1ECEADDA}</ProjectGuid>
-        <OutputType>Library</OutputType>
-        <AppDesignerFolder>Properties</AppDesignerFolder>
-        <RootNamespace>EscapeFromDuckovCoopMod</RootNamespace>
-        <AssemblyName>EscapeFromDuckovCoopMod</AssemblyName>
-        <TargetFrameworkVersion>v4.8</TargetFrameworkVersion>
-        <FileAlignment>512</FileAlignment>
-        <Deterministic>true</Deterministic>
+        <TargetFramework>netstandard2.1</TargetFramework>
+        <ImplicitUsings>enable</ImplicitUsings>
+        <Nullable>disable</Nullable>
         <LangVersion>latest</LangVersion>
+        <GenerateAssemblyInfo>false</GenerateAssemblyInfo>
     </PropertyGroup>
-    <PropertyGroup Condition=" '$(Configuration)|$(Platform)' == 'Debug|AnyCPU' ">
-        <DebugSymbols>true</DebugSymbols>
-        <DebugType>full</DebugType>
-        <Optimize>false</Optimize>
-        <OutputPath>bin\Debug\</OutputPath>
-        <DefineConstants>DEBUG;TRACE</DefineConstants>
-        <ErrorReport>prompt</ErrorReport>
-        <WarningLevel>4</WarningLevel>
-        <AllowUnsafeBlocks>true</AllowUnsafeBlocks>
-    </PropertyGroup>
-    <PropertyGroup Condition=" '$(Configuration)|$(Platform)' == 'Release|AnyCPU' ">
-        <DebugType>pdbonly</DebugType>
-        <Optimize>true</Optimize>
-        <OutputPath>bin\Release\</OutputPath>
-        <DefineConstants>TRACE</DefineConstants>
-        <ErrorReport>prompt</ErrorReport>
-        <WarningLevel>4</WarningLevel>
-        <AllowUnsafeBlocks>true</AllowUnsafeBlocks>
-    </PropertyGroup>
-    <ItemGroup>
-        <Compile Include="AnimParamInterpolator .cs"/>
-        <Compile Include="Anti_Cheat.cs"/>
-        <Compile Include="AutoRequestHealthBar.cs"/>
-        <Compile Include="GlobalUsings.cs"/>
-        <Compile Include="HostForceHealthBar.cs"/>
-        <Compile Include="HoldVisualBinder.cs"/>
-        <Compile Include="Main\AI\AIHealth.cs"/>
-        <Compile Include="Main\AI\AIName.cs"/>
-        <Compile Include="Main\AI\AIHandle.cs"/>
-        <Compile Include="Main\AI\AIRequest.cs"/>
-        <Compile Include="Main\AI\AITool.cs"/>
-        <Compile Include="Main\ClientService\ClientPlayer_Apply.cs"/>
-        <Compile Include="Main\ClientService\Client_Handle.cs"/>
-        <Compile Include="Main\ClientService\Sned_ClientStatus.cs"/>
-        <Compile Include="Main\CoopTool.cs"/>
-        <Compile Include="Main\CustomFace.cs"/>
-        <Compile Include="Main\FxManager.cs"/>
-        <Compile Include="Main\Health\Buff.cs"/>
-        <Compile Include="Main\Health\HealthM.cs"/>
-        <Compile Include="Main\Health\HealthTool.cs"/>
-        <Compile Include="Main\Health\HurtM.cs"/>
-        <Compile Include="Main\Item_\ItemHandle.cs"/>
-        <Compile Include="Main\Item_\ItemRequest.cs"/>
-        <Compile Include="Main\Item_\ItemTool.cs"/>
-        <Compile Include="Main\LoaclPlayer\Spectator.cs"/>
-        <Compile Include="Main\Loader\Loader.cs"/>
-        <Compile Include="Main\Op.cs"/>
-        <Compile Include="Main\PublicHandleUpdate.cs"/>
-        <Compile Include="Main\HostService\Host_Handle.cs"/>
-        <Compile Include="Main\LoaclPlayer\LoaclPlayerManager.cs"/>
-        <Compile Include="Main\NetService.cs"/>
-        <Compile Include="Main\HostService\HostPlayer_Apply.cs"/>
-        <Compile Include="Main\LoaclPlayer\Send_LoaclPlayerStatus.cs"/>
-        <Compile Include="Main\SceneService\CreateRemoteCharacter.cs"/>
-        <Compile Include="Main\SceneService\DeadLootBox.cs"/>
-        <Compile Include="Main\SceneService\Destructible.cs"/>
-        <Compile Include="Main\SceneService\Door_.cs"/>
-        <Compile Include="Main\SceneService\LootNet.cs"/>
-        <Compile Include="Main\SceneService\SceneM.cs"/>
-        <Compile Include="Main\SceneService\SceneNet.cs"/>
-        <Compile Include="Main\UI\ModUI.cs"/>
-        <Compile Include="Main\Weapon_\GrenadeM.cs"/>
-        <Compile Include="Main\Weapon_\WeaponHandle.cs"/>
-        <Compile Include="Main\Weapon_\WeaponRequest.cs"/>
-        <Compile Include="Main\Weapon_\WeaponTool.cs"/>
-        <Compile Include="Main\Weather_and_Time\Weather.cs"/>
-        <Compile Include="Net\LocalHitKillFx.cs"/>
-        <Compile Include="Net\NetAiTag.cs"/>
-        <Compile Include="Net\NetAiVisibilityGuard.cs"/>
-        <Compile Include="Net\NetAiFollower.cs"/>
-        <Compile Include="NetTag\NetDestructibleTag.cs"/>
-        <Compile Include="NetTag\NetDropTag.cs"/>
-        <Compile Include="Main\COOPManager.cs"/>
-        <Compile Include="Main\HarmonyFix.cs"/>
-        <Compile Include="Main\Loader\Mod.cs"/>
-        <Compile Include="NetTag\NetGrenadeTag.cs"/>
-        <Compile Include="Net\NetDataExtensions.cs"/>
-        <Compile Include="Net\NetInterpolator.cs"/>
-        <Compile Include="Net\NetPack\NetPack.cs"/>
-        <Compile Include="Net\NetPack\NetPack_Projectile.cs"/>
-        <Compile Include="Net\NetPack\PackFlag.cs"/>
-        <Compile Include="Net\NetSilenceGuards.cs"/>
-        <Compile Include="Net\Steam\SteamP2PManager.cs"/>
-        <Compile Include="Patch\Character_\AICharacterControllerPatch.cs"/>
-        <Compile Include="Patch\Character_\AnimPacth.cs"/>
-        <Compile Include="Patch\Character_\BuffPatch.cs"/>
-        <Compile Include="Patch\Character_\CharacterItemControl_Patch.cs"/>
-        <Compile Include="Patch\Character_\CharacterMainControlPatch.cs"/>
-        <Compile Include="Patch\Character_\CharacterSpawnerRootPatch.cs"/>
-        <Compile Include="Patch\Character_\HealthPatch.cs"/>
-        <Compile Include="Patch\Character_\Health_HurtPacth.cs"/>
-        <Compile Include="Patch\Inventory_and_LootBox\InteractableLootboxPatch.cs"/>
-        <Compile Include="Patch\Inventory_and_LootBox\InventoryPatch.cs"/>
-        <Compile Include="Main\SceneService\LootManager.cs"/>
-        <Compile Include="Patch\Inventory_and_LootBox\LootBoxLoaderPatch.cs"/>
-        <Compile Include="Patch\Inventory_and_LootBox\LootSpawner.cs"/>
-        <Compile Include="Patch\Inventory_and_LootBox\LootViewPatch.cs"/>
-        <Compile Include="Patch\Item_\Grenade_BreaKablePatch.cs"/>
-        <Compile Include="Patch\Item_\GunPatch.cs"/>
-        <Compile Include="Patch\Item_\ItemExtensionsPatch.cs"/>
-        <Compile Include="Patch\Item_\ItemUtilitiesPatch.cs"/>
-        <Compile Include="Patch\Item_\Item_Patch.cs"/>
-        <Compile Include="Patch\Item_\SlotPatch.cs"/>
-        <Compile Include="Patch\Scene\DoorPatch.cs"/>
-        <Compile Include="Patch\Scene\LevelManagerPatch.cs"/>
-        <Compile Include="Patch\Scene\ScenePatch.cs"/>
-        <Compile Include="Properties\AssemblyInfo.cs"/>
-        <Compile Include="SyncData\SyncDataManger.cs"/>
-        <Compile Include="_BuffLateBinder.cs"/>
-    </ItemGroup>
-    <ItemGroup>
-        <None Include="packages.config"/>
-    </ItemGroup>
+
     <ItemGroup>
         <Reference Include="0Harmony, Version=2.3.3.0, Culture=neutral, processorArchitecture=MSIL">
             <SpecificVersion>False</SpecificVersion>
@@ -496,6 +377,4 @@
         <Copy SourceFiles="$(OutputPath)\$(AssemblyName).dll" DestinationFolder="$(DUCKOV_MODS_DIRECTORY)\$(ProjectName)" SkipUnchangedFiles="true"/>
         <Message Text="Copied DLL -&gt; $(DUCKOV_MODS_DIRECTORY)\$(ProjectName)\$(AssemblyName).dll" Importance="High"/>
     </Target>
-
-    <Import Project="$(MSBuildToolsPath)\Microsoft.CSharp.targets"/>
 </Project>

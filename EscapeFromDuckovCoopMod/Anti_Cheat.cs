@@ -25,7 +25,7 @@ namespace EscapeFromDuckovCoopMod
 {
     internal class Anti_Cheat
     {
-        public void 开玩笑_看啥呢_XD()
+        public void 开玩笑_看啥呢_XDD  ()
         {
             if(true)
             {

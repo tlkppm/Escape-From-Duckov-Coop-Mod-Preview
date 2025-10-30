@@ -14,23 +14,9 @@
 // MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
 // GNU Affero General Public License for more details.
 
-﻿using Steamworks;
-using System;
-using System.Collections.Generic;
-using System.Linq;
-using System.Text;
-using System.Threading.Tasks;
-using UnityEngine;
-
-namespace EscapeFromDuckovCoopMod
+﻿namespace EscapeFromDuckovCoopMod
 {
     public class SteamP2PManager
     {
-
-
-
-
-
-
     }
 }

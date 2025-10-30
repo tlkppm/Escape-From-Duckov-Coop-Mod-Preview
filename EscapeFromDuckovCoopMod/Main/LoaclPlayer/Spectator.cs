@@ -14,23 +14,28 @@
 // MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
 // GNU Affero General Public License for more details.
 
-﻿using Cysharp.Threading.Tasks;
+﻿using System.Collections.Generic;
+using Cysharp.Threading.Tasks;
 using HarmonyLib;
 using LiteNetLib;
 using LiteNetLib.Utils;
-using System;
-using System.Collections.Generic;
-using System.Linq;
-using System.Text;
-using System.Threading.Tasks;
 using UnityEngine;
 
 namespace EscapeFromDuckovCoopMod
 {
-    public class Spectator:MonoBehaviour
+    public class Spectator : MonoBehaviour
     {
-        private NetService Service => NetService.Instance;
         public static Spectator Instance;
+        public bool _spectatorEndOnVotePending;
+
+        public bool _skipSpectatorForNextClosure;
+
+        public bool _spectatorActive;
+        public List<CharacterMainControl> _spectateList = new List<CharacterMainControl>();
+        public int _spectateIdx = -1;
+        public float _spectateNextSwitchTime;
+        public DamageInfo _lastDeathInfo;
+        private NetService Service => NetService.Instance;
 
         private bool IsServer => Service != null && Service.IsServer;
         private NetManager netManager => Service?.netManager;
@@ -41,30 +46,21 @@ namespace EscapeFromDuckovCoopMod
         private Dictionary<NetPeer, GameObject> remoteCharacters => Service?.remoteCharacters;
         private Dictionary<NetPeer, PlayerStatus> playerStatuses => Service?.playerStatuses;
         private Dictionary<string, GameObject> clientRemoteCharacters => Service?.clientRemoteCharacters;
-        public bool _spectatorEndOnVotePending = false;
-
-        public bool _skipSpectatorForNextClosure = false;
-
-        public bool _spectatorActive = false;
-        public List<CharacterMainControl> _spectateList = new List<CharacterMainControl>();
-        public int _spectateIdx = -1;
-        public float _spectateNextSwitchTime = 0f;
-        public global::DamageInfo _lastDeathInfo;
 
         public void Init()
         {
             Instance = this;
         }
 
-        public bool TryEnterSpectatorOnDeath(global::DamageInfo dmgInfo)
+        public bool TryEnterSpectatorOnDeath(DamageInfo dmgInfo)
         {
             var main = CharacterMainControl.Main;
             if (!LevelManager.LevelInited || main == null) return false;
 
-            BuildSpectateList(exclude: main);
+            BuildSpectateList(main);
             Debug.Log("观战: " + _spectateList.Count);
 
-            if (_spectateList.Count <= 0) return false;     // 没人可观战 -> 让结算继续
+            if (_spectateList.Count <= 0) return false; // 没人可观战 -> 让结算继续
 
             _lastDeathInfo = dmgInfo;
             _spectatorActive = true;
@@ -82,7 +78,7 @@ namespace EscapeFromDuckovCoopMod
         {
             _spectateList.Clear();
 
-            string mySceneId = localPlayerStatus != null ? localPlayerStatus.SceneId : null;
+            var mySceneId = localPlayerStatus != null ? localPlayerStatus.SceneId : null;
             if (string.IsNullOrEmpty(mySceneId))
                 LoaclPlayerManager.Instance.ComputeIsInGame(out mySceneId);
             var myK = CanonicalizeSceneId(mySceneId);
@@ -90,7 +86,6 @@ namespace EscapeFromDuckovCoopMod
             int cand = 0, kept = 0;
 
             if (IsServer)
-            {
                 foreach (var kv in remoteCharacters)
                 {
                     var go = kv.Value;
@@ -108,9 +103,7 @@ namespace EscapeFromDuckovCoopMod
                         kept++;
                     }
                 }
-            }
             else
-            {
                 foreach (var kv in clientRemoteCharacters)
                 {
                     var go = kv.Value;
@@ -133,7 +126,6 @@ namespace EscapeFromDuckovCoopMod
                         kept++;
                     }
                 }
-            }
 
             Debug.Log($"[SPECTATE] 候选={cand}, 同图保留={kept}, mySceneId={mySceneId} (canon={myK})");
         }
@@ -151,13 +143,11 @@ namespace EscapeFromDuckovCoopMod
             {
                 removed = false;
                 foreach (var suf in suffixes)
-                {
                     if (s.EndsWith(suf))
                     {
                         s = s.Substring(0, s.Length - suf.Length);
                         removed = true;
                     }
-                }
             } while (removed);
 
             while (s.Contains("__")) s = s.Replace("__", "_");
@@ -180,11 +170,10 @@ namespace EscapeFromDuckovCoopMod
         public bool IsInSameScene(CharacterMainControl cmc)
         {
             if (!cmc) return false;
-            string mySceneId = localPlayerStatus != null ? localPlayerStatus.SceneId : null;
+            var mySceneId = localPlayerStatus != null ? localPlayerStatus.SceneId : null;
             if (string.IsNullOrEmpty(mySceneId)) return true; // 降级：无ID时不做过滤
 
             if (IsServer)
-            {
                 foreach (var kv in remoteCharacters)
                 {
                     if (kv.Value == null) continue;
@@ -196,9 +185,7 @@ namespace EscapeFromDuckovCoopMod
                         return false;
                     }
                 }
-            }
             else
-            {
                 foreach (var kv in clientRemoteCharacters)
                 {
                     if (kv.Value == null) continue;
@@ -210,7 +197,7 @@ namespace EscapeFromDuckovCoopMod
                         return false;
                     }
                 }
-            }
+
             return false;
         }
 
@@ -239,18 +226,12 @@ namespace EscapeFromDuckovCoopMod
             try
             {
                 var t = AccessTools.TypeByName("Duckov.UI.ClosureView");
-                var mi = AccessTools.Method(t, "ShowAndReturnTask", new System.Type[] { typeof(global::DamageInfo), typeof(float) });
-                if (mi != null)
-                {
-                    ((UniTask)mi.Invoke(null, new object[] { _lastDeathInfo, 0.5f })).Forget();
-                }
+                var mi = AccessTools.Method(t, "ShowAndReturnTask", new[] { typeof(DamageInfo), typeof(float) });
+                if (mi != null) ((UniTask)mi.Invoke(null, new object[] { _lastDeathInfo, 0.5f })).Forget();
             }
-            catch { }
+            catch
+            {
+            }
         }
-
-
-
-
-
     }
 }

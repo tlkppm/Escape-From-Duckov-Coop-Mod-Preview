@@ -14,14 +14,10 @@
 // MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
 // GNU Affero General Public License for more details.
 
-﻿using HarmonyLib;
+﻿using System;
+using HarmonyLib;
 using ItemStatsSystem;
 using LiteNetLib;
-using System;
-using System.Collections.Generic;
-using System.Linq;
-using System.Text;
-using System.Threading.Tasks;
 using UnityEngine;
 
 namespace EscapeFromDuckovCoopMod
@@ -31,7 +27,7 @@ namespace EscapeFromDuckovCoopMod
     {
         [HarmonyPrefix]
         [HarmonyPatch(typeof(Skill_Grenade), nameof(Skill_Grenade.OnRelease))]
-        static bool Skill_Grenade_OnRelease_Prefix(Skill_Grenade __instance)
+        private static bool Skill_Grenade_OnRelease_Prefix(Skill_Grenade __instance)
         {
             var mod = ModBehaviourF.Instance;
             if (mod == null || !mod.networkStarted) return true;
@@ -40,10 +36,20 @@ namespace EscapeFromDuckovCoopMod
             try
             {
                 var prefab = __instance.grenadePfb; // public 字段
-                int typeId = 0; try { typeId = (__instance.fromItem != null) ? __instance.fromItem.TypeID : __instance.damageInfo.fromWeaponItemID; } catch { }
+                var typeId = 0;
+                try
+                {
+                    typeId = __instance.fromItem != null ? __instance.fromItem.TypeID : __instance.damageInfo.fromWeaponItemID;
+                }
+                catch
+                {
+                }
+
                 if (prefab) CoopTool.CacheGrenadePrefab(typeId, prefab);
             }
-            catch { }
+            catch
+            {
+            }
 
 
             if (mod.IsServer)
@@ -51,18 +57,36 @@ namespace EscapeFromDuckovCoopMod
                 // 服务器本地丢：确保 damageInfo.fromWeaponItemID 被写入，供 Grenade.Launch Postfix 读取
                 try
                 {
-                    int tid = 0;
-                    try { if (__instance.fromItem != null) tid = __instance.fromItem.TypeID; } catch { }
+                    var tid = 0;
+                    try
+                    {
+                        if (__instance.fromItem != null) tid = __instance.fromItem.TypeID;
+                    }
+                    catch
+                    {
+                    }
+
                     if (tid == 0)
-                    {
-                        try { tid = __instance.damageInfo.fromWeaponItemID; } catch { }
-                    }
+                        try
+                        {
+                            tid = __instance.damageInfo.fromWeaponItemID;
+                        }
+                        catch
+                        {
+                        }
+
                     if (tid != 0)
-                    {
-                        try { __instance.damageInfo.fromWeaponItemID = tid; } catch { }
-                    }
+                        try
+                        {
+                            __instance.damageInfo.fromWeaponItemID = tid;
+                        }
+                        catch
+                        {
+                        }
                 }
-                catch { }
+                catch
+                {
+                }
 
                 // 放行原流程，由 Launch 的 Postfix 广播
                 return true;
@@ -79,30 +103,38 @@ namespace EscapeFromDuckovCoopMod
                 var f_from = AccessTools.Field(typeof(SkillBase), "fromCharacter");
                 fromChar = f_from?.GetValue(__instance) as CharacterMainControl;
             }
-            catch { }
+            catch
+            {
+            }
+
             if (fromChar != CharacterMainControl.Main) return true;
 
             try
             {
-                Vector3 position = fromChar ? fromChar.CurrentUsingAimSocket.position : Vector3.zero;
+                var position = fromChar ? fromChar.CurrentUsingAimSocket.position : Vector3.zero;
 
-                Vector3 releasePoint = Vector3.zero;
+                var releasePoint = Vector3.zero;
                 var relCtx = AccessTools.Field(typeof(SkillBase), "skillReleaseContext")?.GetValue(__instance);
                 if (relCtx != null)
                 {
                     var f_rp = AccessTools.Field(relCtx.GetType(), "releasePoint");
                     if (f_rp != null) releasePoint = (Vector3)f_rp.GetValue(relCtx);
                 }
-                float y = releasePoint.y;
-                Vector3 point = releasePoint - (fromChar ? fromChar.transform.position : Vector3.zero);
-                point.y = 0f; float dist = point.magnitude;
+
+                var y = releasePoint.y;
+                var point = releasePoint - (fromChar ? fromChar.transform.position : Vector3.zero);
+                point.y = 0f;
+                var dist = point.magnitude;
                 var ctxObj = AccessTools.Field(typeof(SkillBase), "skillContext")?.GetValue(__instance);
                 if (!__instance.canControlCastDistance && ctxObj != null)
                 {
                     var f_castRange = AccessTools.Field(ctxObj.GetType(), "castRange");
                     if (f_castRange != null) dist = (float)f_castRange.GetValue(ctxObj);
                 }
-                point.Normalize(); Vector3 target = position + point * dist; target.y = y;
+
+                point.Normalize();
+                var target = position + point * dist;
+                target.y = y;
 
                 float vert = 8f, effectRange = 3f;
                 if (ctxObj != null)
@@ -112,26 +144,34 @@ namespace EscapeFromDuckovCoopMod
                     if (f_vert != null) vert = (float)f_vert.GetValue(ctxObj);
                     if (f_eff != null) effectRange = (float)f_eff.GetValue(ctxObj);
                 }
-                Vector3 velocity = __instance.CalculateVelocity(position, target, vert);
 
-                string prefabType = __instance.grenadePfb ? __instance.grenadePfb.GetType().FullName : string.Empty;
-                string prefabName = __instance.grenadePfb ? __instance.grenadePfb.name : string.Empty;
-                int typeId2 = 0; try { typeId2 = (__instance.fromItem != null) ? __instance.fromItem.TypeID : __instance.damageInfo.fromWeaponItemID; } catch { }
+                var velocity = __instance.CalculateVelocity(position, target, vert);
 
-                bool createExplosion = __instance.createExplosion;
-                float shake = __instance.explosionShakeStrength;
-                float damageRange = effectRange;
-                bool delayFromCollide = __instance.delayFromCollide;
-                float delayTime = __instance.delay;
-                bool isLandmine = __instance.isLandmine;
-                float landmineRange = __instance.landmineTriggerRange;
+                var prefabType = __instance.grenadePfb ? __instance.grenadePfb.GetType().FullName : string.Empty;
+                var prefabName = __instance.grenadePfb ? __instance.grenadePfb.name : string.Empty;
+                var typeId2 = 0;
+                try
+                {
+                    typeId2 = __instance.fromItem != null ? __instance.fromItem.TypeID : __instance.damageInfo.fromWeaponItemID;
+                }
+                catch
+                {
+                }
+
+                var createExplosion = __instance.createExplosion;
+                var shake = __instance.explosionShakeStrength;
+                var damageRange = effectRange;
+                var delayFromCollide = __instance.delayFromCollide;
+                var delayTime = __instance.delay;
+                var isLandmine = __instance.isLandmine;
+                var landmineRange = __instance.landmineTriggerRange;
 
                 // 只发请求，不本地生成
                 COOPManager.GrenadeM.Net_OnClientThrow(__instance, typeId2, prefabType, prefabName, position, velocity,
                     createExplosion, shake, damageRange, delayFromCollide, delayTime, isLandmine, landmineRange);
                 return false;
             }
-            catch (System.Exception e)
+            catch (Exception e)
             {
                 Debug.LogWarning("[GRENADE Prefix] exception -> pass through: " + e);
                 return true;
@@ -140,49 +180,57 @@ namespace EscapeFromDuckovCoopMod
 
         [HarmonyPostfix]
         [HarmonyPatch(typeof(Grenade), nameof(Grenade.Launch))]
-        static void Grenade_Launch_Postfix(Grenade __instance, Vector3 startPoint, Vector3 velocity, CharacterMainControl fromCharacter)
+        private static void Grenade_Launch_Postfix(Grenade __instance, Vector3 startPoint, Vector3 velocity, CharacterMainControl fromCharacter)
         {
             var mod = ModBehaviourF.Instance;
             if (mod == null || !mod.networkStarted || !mod.IsServer) return;
 
-            int typeId = 0;
-            try { typeId = __instance.damageInfo.fromWeaponItemID; } catch { }
+            var typeId = 0;
+            try
+            {
+                typeId = __instance.damageInfo.fromWeaponItemID;
+            }
+            catch
+            {
+            }
 
             if (typeId == 0)
-            {
                 try
                 {
                     typeId = Traverse.Create(__instance).Field<ItemAgent>("bindedAgent").Value.Item.TypeID;
                 }
-                catch { }
-            }
+                catch
+                {
+                }
 
             COOPManager.GrenadeM.Server_OnGrenadeLaunched(__instance, startPoint, velocity, typeId);
         }
 
         [HarmonyPrefix]
         [HarmonyPatch(typeof(Grenade), "Explode")]
-        static void Grenade_Explode_Prefix(Grenade __instance, ref bool __state)
+        private static void Grenade_Explode_Prefix(Grenade __instance, ref bool __state)
         {
             __state = __instance.createExplosion;
             var mod = ModBehaviourF.Instance;
             if (mod != null && mod.networkStarted && !mod.IsServer)
             {
-                var isNetworkGrenade = __instance && __instance.GetComponent<EscapeFromDuckovCoopMod.NetGrenadeTag>() != null;
+                var isNetworkGrenade = __instance && __instance.GetComponent<NetGrenadeTag>() != null;
                 if (!isNetworkGrenade)
                     __instance.createExplosion = false;
             }
         }
+
         [HarmonyPostfix]
         [HarmonyPatch(typeof(Grenade), "Explode")]
-        static void Grenade_Explode_Postfix(Grenade __instance, bool __state)
+        private static void Grenade_Explode_Postfix(Grenade __instance, bool __state)
         {
             var mod = ModBehaviourF.Instance;
             if (mod != null && mod.networkStarted && !mod.IsServer) __instance.createExplosion = __state;
         }
+
         [HarmonyPostfix]
         [HarmonyPatch(typeof(Grenade), "Explode")]
-        static void Grenade_Explode_ServerBroadcast(Grenade __instance)
+        private static void Grenade_Explode_ServerBroadcast(Grenade __instance)
         {
             var mod = ModBehaviourF.Instance;
             if (mod == null || !mod.networkStarted || !mod.IsServer) return;
@@ -191,11 +239,11 @@ namespace EscapeFromDuckovCoopMod
     }
 
     [HarmonyPatch(typeof(Breakable), "Awake")]
-    static class Patch_Breakable_Awake_ForceVisibleInCoop
+    internal static class Patch_Breakable_Awake_ForceVisibleInCoop
     {
-        static void Postfix(Breakable __instance)
+        private static void Postfix(Breakable __instance)
         {
-            var mod = EscapeFromDuckovCoopMod.ModBehaviourF.Instance;
+            var mod = ModBehaviourF.Instance;
             if (mod == null || !mod.networkStarted) return;
 
             // 确保可破坏体带 NetDestructibleTag 并注册
@@ -209,11 +257,12 @@ namespace EscapeFromDuckovCoopMod
                     COOPManager.destructible.RegisterDestructible(tag.id, hs);
                 }
             }
-            catch { }
+            catch
+            {
+            }
 
             // 仅客户端：把 Awake 里因本地 Save 关掉的外观/碰撞体全部拉回“未破坏”
             if (!mod.IsServer)
-            {
                 try
                 {
                     if (__instance.normalVisual) __instance.normalVisual.SetActive(true);
@@ -224,11 +273,9 @@ namespace EscapeFromDuckovCoopMod
                     var hs = __instance.simpleHealth;
                     if (hs && hs.dmgReceiver) hs.dmgReceiver.gameObject.SetActive(true);
                 }
-                catch { }
-            }
+                catch
+                {
+                }
         }
     }
-
-
-
 }

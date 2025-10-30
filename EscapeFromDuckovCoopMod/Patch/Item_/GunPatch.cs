@@ -16,21 +16,16 @@
 
 ﻿using HarmonyLib;
 using LiteNetLib;
-using System;
-using System.Collections.Generic;
-using System.Linq;
-using System.Text;
-using System.Threading.Tasks;
+using LiteNetLib.Utils;
 using UnityEngine;
 
 namespace EscapeFromDuckovCoopMod
 {
-
     [HarmonyPatch(typeof(ItemAgent_Gun), "ShootOneBullet")]
-    static class Patch_BlockClientAiShoot
+    internal static class Patch_BlockClientAiShoot
     {
         [HarmonyPriority(Priority.First)]
-        static bool Prefix(ItemAgent_Gun __instance, Vector3 _muzzlePoint, Vector3 _shootDirection, Vector3 firstFrameCheckStartPoint)
+        private static bool Prefix(ItemAgent_Gun __instance, Vector3 _muzzlePoint, Vector3 _shootDirection, Vector3 firstFrameCheckStartPoint)
         {
             var mod = ModBehaviourF.Instance;
             if (mod == null || !mod.networkStarted) return true;
@@ -43,8 +38,8 @@ namespace EscapeFromDuckovCoopMod
             // 非本地主角 &&（AI 有 AICharacterController 或 NetAiTag 任一）=> 拦截
             if (holder && holder != CharacterMainControl.Main)
             {
-                bool isAI = holder.GetComponent<AICharacterController>() != null
-                         || holder.GetComponent<NetAiTag>() != null;
+                var isAI = holder.GetComponent<AICharacterController>() != null
+                           || holder.GetComponent<NetAiTag>() != null;
 
                 if (isAI)
                 {
@@ -59,18 +54,19 @@ namespace EscapeFromDuckovCoopMod
     }
 
     [HarmonyPatch(typeof(ItemAgent_MeleeWeapon), "CheckCollidersInRange")]
-    static class Patch_Melee_FlagLocalDeal
+    internal static class Patch_Melee_FlagLocalDeal
     {
-        static void Prefix(ItemAgent_MeleeWeapon __instance, bool dealDamage)
+        private static void Prefix(ItemAgent_MeleeWeapon __instance, bool dealDamage)
         {
-            var mod = EscapeFromDuckovCoopMod.ModBehaviourF.Instance;
-            bool isClient = (mod != null && mod.networkStarted && !mod.IsServer);
-            bool fromLocalMain = (__instance && __instance.Holder == CharacterMainControl.Main);
-            EscapeFromDuckovCoopMod.MeleeLocalGuard.LocalMeleeTryingToHurt = (isClient && fromLocalMain && dealDamage);
+            var mod = ModBehaviourF.Instance;
+            var isClient = mod != null && mod.networkStarted && !mod.IsServer;
+            var fromLocalMain = __instance && __instance.Holder == CharacterMainControl.Main;
+            MeleeLocalGuard.LocalMeleeTryingToHurt = isClient && fromLocalMain && dealDamage;
         }
-        static void Postfix()
+
+        private static void Postfix()
         {
-            EscapeFromDuckovCoopMod.MeleeLocalGuard.LocalMeleeTryingToHurt = false;
+            MeleeLocalGuard.LocalMeleeTryingToHurt = false;
         }
     }
 
@@ -78,17 +74,17 @@ namespace EscapeFromDuckovCoopMod
     [HarmonyPatch(typeof(ItemAgent_Gun), "ShootOneBullet")]
     public static class Patch_ShootOneBullet_Client
     {
-        static bool Prefix(ItemAgent_Gun __instance, Vector3 _muzzlePoint, Vector3 _shootDirection, Vector3 firstFrameCheckStartPoint)
+        private static bool Prefix(ItemAgent_Gun __instance, Vector3 _muzzlePoint, Vector3 _shootDirection, Vector3 firstFrameCheckStartPoint)
         {
             var mod = ModBehaviourF.Instance;
             if (mod == null || !mod.networkStarted) return true;
 
-            bool isClient = !mod.IsServer;
+            var isClient = !mod.IsServer;
             if (!isClient) return true;
 
             var holder = __instance.Holder;
-            bool isLocalMain = (holder == CharacterMainControl.Main);
-            bool isAI = holder && holder.GetComponent<NetAiTag>() != null;
+            var isLocalMain = holder == CharacterMainControl.Main;
+            var isAI = holder && holder.GetComponent<NetAiTag>() != null;
 
             if (isLocalMain)
             {
@@ -96,17 +92,17 @@ namespace EscapeFromDuckovCoopMod
                 return false; // 客户端不生成，交主机
             }
 
-            if (isAI) return false;     // 客户端看到的AI，等主机的 FIRE_EVENT
+            if (isAI) return false; // 客户端看到的AI，等主机的 FIRE_EVENT
             if (!isLocalMain) return false;
             return true;
         }
     }
 
     // 服务端：在 Projectile.Init 后，把“服务端算好的弹丸参数”一并广播给所有客户端
-    [HarmonyPatch(typeof(Projectile), nameof(Projectile.Init), new[] { typeof(ProjectileContext) })]
-    static class Patch_ProjectileInit_Broadcast
+    [HarmonyPatch(typeof(Projectile), nameof(Projectile.Init), typeof(ProjectileContext))]
+    internal static class Patch_ProjectileInit_Broadcast
     {
-        static void Postfix(Projectile __instance, ref ProjectileContext _context)
+        private static void Postfix(Projectile __instance, ref ProjectileContext _context)
         {
             var mod = ModBehaviourF.Instance;
             if (mod == null || !mod.IsServer || __instance == null) return;
@@ -117,7 +113,10 @@ namespace EscapeFromDuckovCoopMod
             if (!fromC) return;
 
             string shooterId = null;
-            if (fromC.IsMainCharacter) shooterId = mod.localPlayerStatus?.EndPoint;
+            if (fromC.IsMainCharacter)
+            {
+                shooterId = mod.localPlayerStatus?.EndPoint;
+            }
             else
             {
                 var tag = fromC.GetComponent<NetAiTag>();
@@ -125,10 +124,17 @@ namespace EscapeFromDuckovCoopMod
                 shooterId = $"AI:{tag.aiId}";
             }
 
-            int weaponType = 0;
-            try { var gun = fromC.GetGun(); if (gun != null && gun.Item != null) weaponType = gun.Item.TypeID; } catch { }
+            var weaponType = 0;
+            try
+            {
+                var gun = fromC.GetGun();
+                if (gun != null && gun.Item != null) weaponType = gun.Item.TypeID;
+            }
+            catch
+            {
+            }
 
-            var w = new LiteNetLib.Utils.NetDataWriter();
+            var w = new NetDataWriter();
             w.Put((byte)Op.FIRE_EVENT);
             w.Put(shooterId);
             w.Put(weaponType);
@@ -143,10 +149,4 @@ namespace EscapeFromDuckovCoopMod
             mod.netManager.SendToAll(w, DeliveryMethod.ReliableOrdered);
         }
     }
-
-
-
-
-
-
 }

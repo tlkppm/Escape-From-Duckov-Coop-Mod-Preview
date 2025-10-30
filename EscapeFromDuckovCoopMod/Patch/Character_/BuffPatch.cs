@@ -14,16 +14,11 @@
 // MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
 // GNU Affero General Public License for more details.
 
-﻿using Duckov.Buffs;
+﻿using System.Reflection;
+using Duckov.Buffs;
 using HarmonyLib;
 using LiteNetLib;
 using LiteNetLib.Utils;
-using System;
-using System.Collections.Generic;
-using System.Linq;
-using System.Reflection;
-using System.Text;
-using System.Threading.Tasks;
 using UnityEngine;
 using UnityEngine.Events;
 using Object = UnityEngine.Object;
@@ -31,22 +26,22 @@ using Object = UnityEngine.Object;
 namespace EscapeFromDuckovCoopMod
 {
     [HarmonyPatch(typeof(Buff), "Setup")]
-    static class Patch_Buff_Setup_Safe
+    internal static class Patch_Buff_Setup_Safe
     {
         // 反射缓存
-        static readonly FieldInfo FI_master = AccessTools.Field(typeof(Buff), "master");
-        static readonly FieldInfo FI_timeWhenStarted = AccessTools.Field(typeof(Buff), "timeWhenStarted");
-        static readonly FieldInfo FI_buffFxPfb = AccessTools.Field(typeof(Buff), "buffFxPfb");
-        static readonly FieldInfo FI_buffFxInstance = AccessTools.Field(typeof(Buff), "buffFxInstance");
-        static readonly FieldInfo FI_OnSetupEvent = AccessTools.Field(typeof(Buff), "OnSetupEvent");
-        static readonly FieldInfo FI_effects = AccessTools.Field(typeof(Buff), "effects");
-        static readonly MethodInfo MI_OnSetup = AccessTools.Method(typeof(Buff), "OnSetup");
+        private static readonly FieldInfo FI_master = AccessTools.Field(typeof(Buff), "master");
+        private static readonly FieldInfo FI_timeWhenStarted = AccessTools.Field(typeof(Buff), "timeWhenStarted");
+        private static readonly FieldInfo FI_buffFxPfb = AccessTools.Field(typeof(Buff), "buffFxPfb");
+        private static readonly FieldInfo FI_buffFxInstance = AccessTools.Field(typeof(Buff), "buffFxInstance");
+        private static readonly FieldInfo FI_OnSetupEvent = AccessTools.Field(typeof(Buff), "OnSetupEvent");
+        private static readonly FieldInfo FI_effects = AccessTools.Field(typeof(Buff), "effects");
+        private static readonly MethodInfo MI_OnSetup = AccessTools.Method(typeof(Buff), "OnSetup");
 
-        static bool Prefix(Buff __instance, CharacterBuffManager manager)
+        private static bool Prefix(Buff __instance, CharacterBuffManager manager)
         {
             // 有 CharacterItem：让原方法照常执行
             var masterCMC = manager ? manager.Master : null;
-            var item = (masterCMC != null) ? masterCMC.CharacterItem : null;
+            var item = masterCMC != null ? masterCMC.CharacterItem : null;
             if (item != null && item.transform != null) return true;
 
             // —— 无 CharacterItem 的“兜底初始化” —— //
@@ -60,7 +55,7 @@ namespace EscapeFromDuckovCoopMod
 
             // 刷新 FX：销毁旧的，按角色的 ArmorSocket/根节点生成新的
             var oldFx = FI_buffFxInstance?.GetValue(__instance) as GameObject;
-            if (oldFx) UnityEngine.Object.Destroy(oldFx);
+            if (oldFx) Object.Destroy(oldFx);
 
             var pfb = FI_buffFxPfb?.GetValue(__instance) as GameObject;
             if (pfb && masterCMC && masterCMC.characterModel)
@@ -91,15 +86,15 @@ namespace EscapeFromDuckovCoopMod
 
 
         [HarmonyPatch(typeof(CharacterBuffManager), nameof(CharacterBuffManager.AddBuff))]
-        static class Patch_BroadcastBuffToOwner
+        private static class Patch_BroadcastBuffToOwner
         {
-            static void Postfix(CharacterBuffManager __instance, Buff buffPrefab, CharacterMainControl fromWho, int overrideWeaponID)
+            private static void Postfix(CharacterBuffManager __instance, Buff buffPrefab, CharacterMainControl fromWho, int overrideWeaponID)
             {
                 var mod = ModBehaviourF.Instance;
                 if (mod == null || !mod.networkStarted || !mod.IsServer) return;
                 if (buffPrefab == null) return;
 
-                var target = __instance.Master;                // 被加 Buff 的角色
+                var target = __instance.Master; // 被加 Buff 的角色
                 if (target == null) return;
 
                 // 只给“这名远端玩家本人”发：在服务器的 remoteCharacters: NetPeer -> GameObject 中查找
@@ -107,24 +102,29 @@ namespace EscapeFromDuckovCoopMod
                 foreach (var kv in mod.remoteCharacters)
                 {
                     if (kv.Value == null) continue;
-                    if (kv.Value == target.gameObject) { peer = kv.Key; break; }
+                    if (kv.Value == target.gameObject)
+                    {
+                        peer = kv.Key;
+                        break;
+                    }
                 }
+
                 if (peer == null) return; // 非玩家，或者就是主机本地角色
 
                 // 发一条“自加 Buff”消息（只给这名玩家）
                 var w = new NetDataWriter();
                 w.Put((byte)Op.PLAYER_BUFF_SELF_APPLY); // 新 opcode（见 Mod.cs）
-                w.Put(overrideWeaponID);   // weaponTypeId：客户端可用它解析出正确的 buff prefab
-                w.Put(buffPrefab.ID);      // 兜底：buffId（若武器没法解析，就用 id 回退）
+                w.Put(overrideWeaponID); // weaponTypeId：客户端可用它解析出正确的 buff prefab
+                w.Put(buffPrefab.ID); // 兜底：buffId（若武器没法解析，就用 id 回退）
                 peer.Send(w, DeliveryMethod.ReliableOrdered);
             }
         }
 
 
         [HarmonyPatch(typeof(CharacterBuffManager), nameof(CharacterBuffManager.AddBuff))]
-        static class Patch_BroadcastBuffApply
+        private static class Patch_BroadcastBuffApply
         {
-            static void Postfix(CharacterBuffManager __instance, Buff buffPrefab, CharacterMainControl fromWho, int overrideWeaponID)
+            private static void Postfix(CharacterBuffManager __instance, Buff buffPrefab, CharacterMainControl fromWho, int overrideWeaponID)
             {
                 var mod = ModBehaviourF.Instance;
                 if (mod == null || !mod.networkStarted || !mod.IsServer) return;
@@ -138,8 +138,13 @@ namespace EscapeFromDuckovCoopMod
                 foreach (var kv in mod.remoteCharacters)
                 {
                     if (kv.Value == null) continue;
-                    if (kv.Value == target.gameObject) { ownerPeer = kv.Key; break; }
+                    if (kv.Value == target.gameObject)
+                    {
+                        ownerPeer = kv.Key;
+                        break;
+                    }
                 }
+
                 if (ownerPeer != null)
                 {
                     var w = new NetDataWriter();
@@ -163,7 +168,4 @@ namespace EscapeFromDuckovCoopMod
             }
         }
     }
-
-
-
 }

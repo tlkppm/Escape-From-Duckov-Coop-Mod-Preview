@@ -14,35 +14,20 @@
 // MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
 // GNU Affero General Public License for more details.
 
-﻿using Cysharp.Threading.Tasks;
-using Duckov;
-using Duckov.Buffs;
-using Duckov.Quests;
-using Duckov.Quests.Tasks;
-using Duckov.Scenes;
-using Duckov.UI;
-using Duckov.UI.Animations;
-using Duckov.Utilities;
-using HarmonyLib;
-using ItemStatsSystem;
-using ItemStatsSystem.Items;
-using LiteNetLib;
-using LiteNetLib.Utils;
-using NodeCanvas.StateMachines;
-using Steamworks;
-using System;
-using System.Collections;
+﻿using System;
 using System.Collections.Generic;
 using System.Reflection;
+using Cysharp.Threading.Tasks;
+using Duckov.Utilities;
+using FX;
+using HarmonyLib;
+using LiteNetLib;
+using LiteNetLib.Utils;
 using UnityEngine;
-using UnityEngine.Events;
-using UnityEngine.EventSystems;
-using UnityEngine.SceneManagement;
-using Object = UnityEngine.Object;
 
 namespace EscapeFromDuckovCoopMod
 {
-    public sealed class LocalMeleeOncePerFrame : UnityEngine.MonoBehaviour
+    public sealed class LocalMeleeOncePerFrame : MonoBehaviour
     {
         public int lastFrame;
     }
@@ -52,14 +37,13 @@ namespace EscapeFromDuckovCoopMod
         [ThreadStatic] public static bool LocalMeleeTryingToHurt;
     }
 
-  
 
     [HarmonyPatch(typeof(DamageReceiver), "Hurt")]
-    static class Patch_ClientReportMeleeHit
+    internal static class Patch_ClientReportMeleeHit
     {
-        static bool Prefix(DamageReceiver __instance, ref global::DamageInfo __0)
+        private static bool Prefix(DamageReceiver __instance, ref DamageInfo __0)
         {
-            var mod = EscapeFromDuckovCoopMod.ModBehaviourF.Instance;
+            var mod = ModBehaviourF.Instance;
 
             // 不在联网、在主机、或没到“本地近战结算阶段”，都不拦
             if (mod == null || !mod.networkStarted || mod.IsServer || !MeleeLocalGuard.LocalMeleeTryingToHurt)
@@ -73,8 +57,8 @@ namespace EscapeFromDuckovCoopMod
 
             try
             {
-                var w = new LiteNetLib.Utils.NetDataWriter();
-                w.Put((byte)EscapeFromDuckovCoopMod.Op.MELEE_HIT_REPORT);
+                var w = new NetDataWriter();
+                w.Put((byte)Op.MELEE_HIT_REPORT);
                 w.Put(mod.localPlayerStatus != null ? mod.localPlayerStatus.EndPoint : "");
 
                 // DamageInfo 关键字段
@@ -92,18 +76,21 @@ namespace EscapeFromDuckovCoopMod
                 w.Put(__0.isExplosion);
 
                 // 近战范围（主机用于邻域搜）
-                float range = 1.2f;
+                var range = 1.2f;
                 try
                 {
                     var main = CharacterMainControl.Main;
-                    var melee = main ? (main.CurrentHoldItemAgent as ItemAgent_MeleeWeapon) : null;
+                    var melee = main ? main.CurrentHoldItemAgent as ItemAgent_MeleeWeapon : null;
                     if (melee != null) range = Mathf.Max(0.6f, melee.AttackRange);
                 }
-                catch { }
+                catch
+                {
+                }
+
                 w.Put(range);
 
-               
-                mod.connectedPeer.Send(w, LiteNetLib.DeliveryMethod.ReliableOrdered);
+
+                mod.connectedPeer.Send(w, DeliveryMethod.ReliableOrdered);
             }
             catch (Exception e)
             {
@@ -113,28 +100,29 @@ namespace EscapeFromDuckovCoopMod
 
             try
             {
-                if (global::FX.PopText.instance)
+                if (PopText.instance)
                 {
                     // 取默认物理伤害的弹字样式（跟 Health.Hurt 一致的来源）
-                    var look = global::Duckov.Utilities.GameplayDataSettings.UIStyle
-                        .GetElementDamagePopTextLook(global::ElementTypes.physics);
+                    var look = GameplayDataSettings.UIStyle
+                        .GetElementDamagePopTextLook(ElementTypes.physics);
 
                     // 位置：优先用伤害点；没有就用受击者位置；整体上抬一点更清晰
-                    Vector3 pos = (__0.damagePoint.sqrMagnitude > 1e-6f ? __0.damagePoint : __instance.transform.position)
-                                  + global::UnityEngine.Vector3.up * 2f;
+                    var pos = (__0.damagePoint.sqrMagnitude > 1e-6f ? __0.damagePoint : __instance.transform.position)
+                              + Vector3.up * 2f;
 
                     // 暴击大小/图标
-                    float size = (__0.crit > 0) ? look.critSize : look.normalSize;
-                    var sprite = (__0.crit > 0) ? global::Duckov.Utilities.GameplayDataSettings.UIStyle.CritPopSprite : null;
+                    var size = __0.crit > 0 ? look.critSize : look.normalSize;
+                    var sprite = __0.crit > 0 ? GameplayDataSettings.UIStyle.CritPopSprite : null;
 
                     // 文本：有数值就显示数值，没有就显示“HIT”
-                    string text = (__0.damageValue > 0f) ? __0.damageValue.ToString("F1") : "HIT";
+                    var text = __0.damageValue > 0f ? __0.damageValue.ToString("F1") : "HIT";
 
-                    global::FX.PopText.Pop(text, pos, look.color, size, sprite);
+                    PopText.Pop(text, pos, look.color, size, sprite);
                 }
             }
-            catch { }
-
+            catch
+            {
+            }
 
 
             // 成功上报，由主机权威结算
@@ -143,19 +131,18 @@ namespace EscapeFromDuckovCoopMod
     }
 
 
-   
+    public sealed class RemoteReplicaTag : MonoBehaviour
+    {
+    }
 
 
-    public sealed class RemoteReplicaTag : MonoBehaviour { }
-
-
-
-    [HarmonyPatch(typeof(Duckov.Utilities.SetActiveByPlayerDistance), "FixedUpdate")]
-    static class Patch_SABPD_FixedUpdate_AllPlayersUnion
+    [HarmonyPatch(typeof(SetActiveByPlayerDistance), "FixedUpdate")]
+    internal static class Patch_SABPD_FixedUpdate_AllPlayersUnion
     {
         private static NetService Service => NetService.Instance;
         private static Dictionary<NetPeer, PlayerStatus> playerStatuses => Service?.playerStatuses;
-        static bool Prefix(Duckov.Utilities.SetActiveByPlayerDistance __instance)
+
+        private static bool Prefix(SetActiveByPlayerDistance __instance)
         {
             var mod = ModBehaviourF.Instance;
             if (mod == null || !mod.networkStarted) return true; // 单机：走原版
@@ -171,7 +158,7 @@ namespace EscapeFromDuckovCoopMod
             var prop = AccessTools.Property(__instance.GetType(), "Distance");
             if (prop != null) dist = (float)prop.GetValue(__instance, null);
             else dist = tr.Field<float>("distance").Value;
-            float d2 = dist * dist;
+            var d2 = dist * dist;
 
             // === 收集所有在线玩家的位置（本地 + 远端） ===
             var sources = new List<Vector3>(8);
@@ -188,43 +175,43 @@ namespace EscapeFromDuckovCoopMod
             if (sources.Count == 0) return true;
 
             // 逐个对象：任一玩家在范围内就激活
-            for (int i = 0; i < list.Count; i++)
+            for (var i = 0; i < list.Count; i++)
             {
                 var go = list[i];
                 if (!go) continue;
 
-                bool within = false;
+                var within = false;
                 var p = go.transform.position;
-                for (int s = 0; s < sources.Count; s++)
-                {
-                    if ((p - sources[s]).sqrMagnitude <= d2) { within = true; break; }
-                }
+                for (var s = 0; s < sources.Count; s++)
+                    if ((p - sources[s]).sqrMagnitude <= d2)
+                    {
+                        within = true;
+                        break;
+                    }
+
                 if (go.activeSelf != within) go.SetActive(within);
             }
 
             return false; // 跳过原方法
-
         }
-
     }
 
 
-
     [HarmonyPatch(typeof(DamageReceiver), "Hurt")]
-    static class Patch_BlockClientAiVsAi_AtReceiver
+    internal static class Patch_BlockClientAiVsAi_AtReceiver
     {
-        [HarmonyPriority(HarmonyLib.Priority.First)]
-        static bool Prefix(DamageReceiver __instance, ref global::DamageInfo __0)
+        [HarmonyPriority(Priority.First)]
+        private static bool Prefix(DamageReceiver __instance, ref DamageInfo __0)
         {
             var mod = ModBehaviourF.Instance;
             if (mod == null || !mod.networkStarted || mod.IsServer) return true;
 
             var target = __instance ? __instance.GetComponentInParent<CharacterMainControl>() : null;
-            bool victimIsAI = target && (target.GetComponent<AICharacterController>() != null || target.GetComponent<NetAiTag>() != null);
+            var victimIsAI = target && (target.GetComponent<AICharacterController>() != null || target.GetComponent<NetAiTag>() != null);
             if (!victimIsAI) return true;
 
             var attacker = __0.fromCharacter;
-            bool attackerIsAI = attacker && (attacker.GetComponent<NetAiTag>() != null || attacker.GetComponent<NetAiTag>() != null);
+            var attackerIsAI = attacker && (attacker.GetComponent<NetAiTag>() != null || attacker.GetComponent<NetAiTag>() != null);
             if (attackerIsAI) return false; // 不让伤害继续走向 Health
 
             return true;
@@ -233,28 +220,24 @@ namespace EscapeFromDuckovCoopMod
 
 
     [HarmonyPatch(typeof(SetActiveByPlayerDistance), "FixedUpdate")]
-    static class Patch_SABD_KeepRemoteAIActive_Client
+    internal static class Patch_SABD_KeepRemoteAIActive_Client
     {
-        static void Postfix(SetActiveByPlayerDistance __instance)
+        private static void Postfix(SetActiveByPlayerDistance __instance)
         {
             var m = ModBehaviourF.Instance;
             if (m == null || !m.networkStarted || m.IsServer) return;
 
-            bool forceAll = m.Client_ForceShowAllRemoteAI;
-            if (forceAll)
-            {
-                Traverse.Create(__instance).Field<float>("distance").Value = 9999f;
-            }
+            var forceAll = m.Client_ForceShowAllRemoteAI;
+            if (forceAll) Traverse.Create(__instance).Field<float>("distance").Value = 9999f;
         }
     }
 
 
-
     [HarmonyPatch(typeof(DamageReceiver), "Hurt")]
-    static class Patch_ClientMelee_HurtRedirect_Destructible
+    internal static class Patch_ClientMelee_HurtRedirect_Destructible
     {
-        [HarmonyPriority(HarmonyLib.Priority.First)]
-        static bool Prefix(DamageReceiver __instance, ref global::DamageInfo __0)
+        [HarmonyPriority(Priority.First)]
+        private static bool Prefix(DamageReceiver __instance, ref DamageInfo __0)
         {
             var m = ModBehaviourF.Instance;
             if (m == null || !m.networkStarted || m.IsServer) return true;
@@ -271,9 +254,14 @@ namespace EscapeFromDuckovCoopMod
             var tag = hs.GetComponent<NetDestructibleTag>();
             if (tag) id = tag.id;
             if (id == 0)
-            {
-                try { id = NetDestructibleTag.ComputeStableId(hs.gameObject); } catch { }
-            }
+                try
+                {
+                    id = NetDestructibleTag.ComputeStableId(hs.gameObject);
+                }
+                catch
+                {
+                }
+
             if (id == 0) return true; // 算不出 id，就放行给原逻辑，避免“打不掉”
 
             // 正确的调用：传 id，而不是传 HealthSimpleBase
@@ -285,39 +273,35 @@ namespace EscapeFromDuckovCoopMod
 
     //观战
     [HarmonyPatch]
-    static class Patch_ClosureView_ShowAndReturnTask_SpectatorGate
+    internal static class Patch_ClosureView_ShowAndReturnTask_SpectatorGate
     {
-        static System.Reflection.MethodBase TargetMethod()
+        private static MethodBase TargetMethod()
         {
             var t = AccessTools.TypeByName("Duckov.UI.ClosureView");
             if (t == null) return null;
-            return AccessTools.Method(t, "ShowAndReturnTask", new Type[] { typeof(global::DamageInfo), typeof(float) });
+            return AccessTools.Method(t, "ShowAndReturnTask", new[] { typeof(DamageInfo), typeof(float) });
         }
 
-        static bool Prefix(ref UniTask __result, global::DamageInfo dmgInfo, float duration)
+        private static bool Prefix(ref UniTask __result, DamageInfo dmgInfo, float duration)
         {
-            var mod =  ModBehaviourF.Instance;
+            var mod = ModBehaviourF.Instance;
             if (mod == null || !mod.networkStarted) return true;
 
             if (Spectator.Instance._skipSpectatorForNextClosure)
             {
                 Spectator.Instance._skipSpectatorForNextClosure = false;
                 __result = UniTask.CompletedTask;
-                return true; 
+                return true;
             }
 
             // 如果还有队友活着，走观战并阻止结算 UI
             if (Spectator.Instance.TryEnterSpectatorOnDeath(dmgInfo))
-            {
-               //  __result = UniTask.CompletedTask;
-               // ClosureView.Instance.gameObject.SetActive(false);
+                //  __result = UniTask.CompletedTask;
+                // ClosureView.Instance.gameObject.SetActive(false);
                 return true; // 拦截原方法
-            }
 
             return true;
         }
-
-      
     }
 
     [HarmonyPatch(typeof(GameManager), "get_Paused")]
@@ -331,7 +315,7 @@ namespace EscapeFromDuckovCoopMod
 
             __result = false;
 
-            return false; 
+            return false;
         }
     }
 
@@ -346,7 +330,6 @@ namespace EscapeFromDuckovCoopMod
             if (mod == null || !mod.networkStarted) return;
 
             mod.Pausebool = true;
-
         }
     }
 
@@ -361,21 +344,24 @@ namespace EscapeFromDuckovCoopMod
             if (mod == null || !mod.networkStarted) return;
 
             mod.Pausebool = false;
-
         }
     }
 
 
-
-    static class NcMainRedirector
+    internal static class NcMainRedirector
     {
-        [System.ThreadStatic] static CharacterMainControl _overrideMain;
-        public static CharacterMainControl Current => _overrideMain;
+        [field: ThreadStatic] public static CharacterMainControl Current { get; private set; }
 
-        public static void Set(CharacterMainControl cmc) { _overrideMain = cmc; }
-        public static void Clear() { _overrideMain = null; }
+        public static void Set(CharacterMainControl cmc)
+        {
+            Current = cmc;
+        }
+
+        public static void Clear()
+        {
+            Current = null;
+        }
     }
-
 
 
     //[HarmonyPatch(typeof(ZoneDamage), "Damage")]
@@ -405,7 +391,6 @@ namespace EscapeFromDuckovCoopMod
     //}
 
 
-
     //[HarmonyPatch(typeof(StormWeather), "Update")]
     //static class Patch_StormWeather_Update
     //{
@@ -427,7 +412,4 @@ namespace EscapeFromDuckovCoopMod
     //        return true;
     //    }
     //}
-
-
-
 }

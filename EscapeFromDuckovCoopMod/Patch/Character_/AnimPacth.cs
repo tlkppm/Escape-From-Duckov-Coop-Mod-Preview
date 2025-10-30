@@ -17,21 +17,16 @@
 ﻿using HarmonyLib;
 using LiteNetLib;
 using LiteNetLib.Utils;
-using System;
-using System.Collections.Generic;
-using System.Linq;
-using System.Text;
-using System.Threading.Tasks;
 using UnityEngine;
 
 namespace EscapeFromDuckovCoopMod
 {
     [HarmonyPatch(typeof(CharacterAnimationControl_MagicBlend), "OnAttack")]
-    static class Patch_Melee_OnAttack_SendNetAndFx
+    internal static class Patch_Melee_OnAttack_SendNetAndFx
     {
-        static void Postfix(CharacterAnimationControl_MagicBlend __instance)
+        private static void Postfix(CharacterAnimationControl_MagicBlend __instance)
         {
-            var mod = EscapeFromDuckovCoopMod.ModBehaviourF.Instance;
+            var mod = ModBehaviourF.Instance;
             var ctrl = __instance?.characterMainControl;
             if (mod == null || !mod.networkStarted || ctrl == null) return;
             if (ctrl != CharacterMainControl.Main) return; // 只处理本地玩家
@@ -41,18 +36,24 @@ namespace EscapeFromDuckovCoopMod
             if (model)
             {
                 var gate = model.GetComponent<LocalMeleeOncePerFrame>() ?? model.gameObject.AddComponent<LocalMeleeOncePerFrame>();
-                if (gate.lastFrame == UnityEngine.Time.frameCount) return;
-                gate.lastFrame = UnityEngine.Time.frameCount;
+                if (gate.lastFrame == Time.frameCount) return;
+                gate.lastFrame = Time.frameCount;
             }
 
             var melee = ctrl.CurrentHoldItemAgent as ItemAgent_MeleeWeapon;
             if (!melee) return;
 
-            float dealDelay = 0.1f;
-            try { dealDelay = Mathf.Max(0f, melee.DealDamageTime); } catch { }
+            var dealDelay = 0.1f;
+            try
+            {
+                dealDelay = Mathf.Max(0f, melee.DealDamageTime);
+            }
+            catch
+            {
+            }
 
-            Vector3 snapPos = ctrl.modelRoot ? ctrl.modelRoot.position : ctrl.transform.position;
-            Vector3 snapDir = ctrl.CurrentAimDirection.sqrMagnitude > 1e-6f ? ctrl.CurrentAimDirection : ctrl.transform.forward;
+            var snapPos = ctrl.modelRoot ? ctrl.modelRoot.position : ctrl.transform.position;
+            var snapDir = ctrl.CurrentAimDirection.sqrMagnitude > 1e-6f ? ctrl.CurrentAimDirection : ctrl.transform.forward;
 
             if (mod.IsServer)
             {
@@ -61,7 +62,7 @@ namespace EscapeFromDuckovCoopMod
             else
             {
                 // 客户端：本地FX + 告诉主机
-                EscapeFromDuckovCoopMod.MeleeFx.SpawnSlashFx(ctrl.characterModel);
+                MeleeFx.SpawnSlashFx(ctrl.characterModel);
                 COOPManager.WeaponRequest.Net_OnClientMeleeAttack(dealDelay, snapPos, snapDir);
             }
         }
@@ -69,9 +70,9 @@ namespace EscapeFromDuckovCoopMod
 
 
     [HarmonyPatch(typeof(CharacterAnimationControl_MagicBlend), "OnAttack")]
-    static class Patch_AI_OnAttack_Broadcast
+    internal static class Patch_AI_OnAttack_Broadcast
     {
-        static void Postfix(CharacterAnimationControl_MagicBlend __instance)
+        private static void Postfix(CharacterAnimationControl_MagicBlend __instance)
         {
             var mod = ModBehaviourF.Instance;
             if (mod == null || !mod.IsServer) return;
@@ -85,7 +86,7 @@ namespace EscapeFromDuckovCoopMod
             var aiTag = cmc.GetComponent<NetAiTag>();
             if (!aiCtrl && aiTag == null) return;
 
-            int aiId = aiTag != null ? aiTag.aiId : 0;
+            var aiId = aiTag != null ? aiTag.aiId : 0;
             if (aiId == 0) return;
 
             mod.writer.Reset();
@@ -96,9 +97,9 @@ namespace EscapeFromDuckovCoopMod
     }
 
     [HarmonyPatch(typeof(CharacterAnimationControl_MagicBlend), "OnAttack")]
-    static class Patch_AI_OnAttack_BroadcastAll
+    internal static class Patch_AI_OnAttack_BroadcastAll
     {
-        static void Postfix(CharacterAnimationControl_MagicBlend __instance)
+        private static void Postfix(CharacterAnimationControl_MagicBlend __instance)
         {
             var mod = ModBehaviourF.Instance;
             if (mod == null || !mod.networkStarted || !mod.IsServer) return;
@@ -114,10 +115,7 @@ namespace EscapeFromDuckovCoopMod
 
             // 持枪的 AI：逐弹丸广播由 Projectile.Init/Postfix 完成；这里不要再额外发送 FIRE_EVENT
             var gun = cmc.GetGun();
-            if (gun != null)
-            {
-                return;
-            }
+            if (gun != null) return;
 
             // 近战：复用玩家的 MELEE_ATTACK_SWING
             var w = new NetDataWriter();
@@ -126,13 +124,12 @@ namespace EscapeFromDuckovCoopMod
             w.Put(__instance.attackTime); // 有就写；没有也无妨
             mod.netManager.SendToAll(w, DeliveryMethod.ReliableOrdered);
         }
-
     }
 
     [HarmonyPatch(typeof(CharacterAnimationControl_MagicBlend), "OnAttack")]
-    static class Patch_AI_OnAttack_MeleeOnly
+    internal static class Patch_AI_OnAttack_MeleeOnly
     {
-        static void Postfix(CharacterAnimationControl_MagicBlend __instance)
+        private static void Postfix(CharacterAnimationControl_MagicBlend __instance)
         {
             var mod = ModBehaviourF.Instance;
             if (mod == null || !mod.networkStarted || !mod.IsServer) return;
@@ -155,10 +152,10 @@ namespace EscapeFromDuckovCoopMod
     }
 
     [HarmonyPatch(typeof(CharacterAnimationControl_MagicBlend), "Update")]
-    static class Patch_MagicBlend_Update_SkipOnRemoteAI
+    internal static class Patch_MagicBlend_Update_SkipOnRemoteAI
     {
         [HarmonyPriority(Priority.First)]
-        static bool Prefix(CharacterAnimationControl_MagicBlend __instance)
+        private static bool Prefix(CharacterAnimationControl_MagicBlend __instance)
         {
             var mod = ModBehaviourF.Instance;
             if (mod == null || !mod.networkStarted) return true;
@@ -170,17 +167,19 @@ namespace EscapeFromDuckovCoopMod
                 var cm = __instance.characterModel;
                 cmc = cm ? cm.characterMainControl : __instance.GetComponentInParent<CharacterMainControl>();
             }
-            catch { }
+            catch
+            {
+            }
 
             if (!cmc) return true;
 
             // 只拦“客户端上的 AI 复制体”
-            bool isAI =
+            var isAI =
                 cmc.GetComponent<AICharacterController>() != null ||
                 cmc.GetComponent<NetAiTag>() != null;
 
-            bool isRemoteReplica =
-                cmc.GetComponent<EscapeFromDuckovCoopMod.NetAiFollower>() != null ||
+            var isRemoteReplica =
+                cmc.GetComponent<NetAiFollower>() != null ||
                 cmc.GetComponent<RemoteReplicaTag>() != null;
 
             if (isAI && isRemoteReplica)
@@ -191,10 +190,10 @@ namespace EscapeFromDuckovCoopMod
     }
 
     [HarmonyPatch(typeof(CharacterAnimationControl), "Update")]
-    static class Patch_CharAnimCtrl_Update_SkipOnRemoteAI
+    internal static class Patch_CharAnimCtrl_Update_SkipOnRemoteAI
     {
         [HarmonyPriority(Priority.First)]
-        static bool Prefix(CharacterAnimationControl __instance)
+        private static bool Prefix(CharacterAnimationControl __instance)
         {
             var mod = ModBehaviourF.Instance;
             if (mod == null || !mod.networkStarted) return true;
@@ -206,16 +205,18 @@ namespace EscapeFromDuckovCoopMod
                 var cm = __instance.characterModel;
                 cmc = cm ? cm.characterMainControl : __instance.GetComponentInParent<CharacterMainControl>();
             }
-            catch { }
+            catch
+            {
+            }
 
             if (!cmc) return true;
 
-            bool isAI =
+            var isAI =
                 cmc.GetComponent<AICharacterController>() != null ||
                 cmc.GetComponent<NetAiTag>() != null;
 
-            bool isRemoteReplica =
-                cmc.GetComponent<EscapeFromDuckovCoopMod.NetAiFollower>() != null ||
+            var isRemoteReplica =
+                cmc.GetComponent<NetAiFollower>() != null ||
                 cmc.GetComponent<RemoteReplicaTag>() != null;
 
             // 客户端的AI复制体：拦掉本地Update
@@ -225,8 +226,4 @@ namespace EscapeFromDuckovCoopMod
             return true;
         }
     }
-
-
-
-
 }

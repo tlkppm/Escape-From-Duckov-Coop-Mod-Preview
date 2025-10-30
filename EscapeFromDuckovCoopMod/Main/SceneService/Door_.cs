@@ -14,21 +14,18 @@
 // MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
 // GNU Affero General Public License for more details.
 
-﻿using HarmonyLib;
+﻿using System;
+using HarmonyLib;
 using LiteNetLib;
 using LiteNetLib.Utils;
-using System;
-using System.Collections.Generic;
-using System.Linq;
-using System.Text;
-using System.Threading.Tasks;
-using Unity.VisualScripting;
 using UnityEngine;
+using Object = UnityEngine.Object;
 
 namespace EscapeFromDuckovCoopMod
 {
     public class Door_
     {
+        [ThreadStatic] public static bool _applyingDoor; // 客户端正在应用网络下发，避免误触发本地拦截
         private NetService Service => NetService.Instance;
 
         private bool IsServer => Service != null && Service.IsServer;
@@ -37,7 +34,6 @@ namespace EscapeFromDuckovCoopMod
         private NetPeer connectedPeer => Service?.connectedPeer;
         private PlayerStatus localPlayerStatus => Service?.localPlayerStatus;
         private bool networkStarted => Service != null && Service.networkStarted;
-        [ThreadStatic] public static bool _applyingDoor;  // 客户端正在应用网络下发，避免误触发本地拦截
 
 
         // 与 Door.GetKey 一致的稳定 Key：Door_{round(pos*10)} 的 GetHashCode
@@ -57,21 +53,34 @@ namespace EscapeFromDuckovCoopMod
         public Door FindDoorByKey(int key)
         {
             if (key == 0) return null;
-            var doors = UnityEngine.Object.FindObjectsOfType<Door>(true);
+            var doors = Object.FindObjectsOfType<Door>(true);
             var fCache = AccessTools.Field(typeof(Door), "doorClosedDataKeyCached");
             var mGetKey = AccessTools.Method(typeof(Door), "GetKey");
 
             foreach (var d in doors)
             {
                 if (!d) continue;
-                int k = 0;
-                try { k = (int)fCache.GetValue(d); } catch { }
-                if (k == 0)
+                var k = 0;
+                try
                 {
-                    try { k = (int)mGetKey.Invoke(d, null); } catch { }
+                    k = (int)fCache.GetValue(d);
                 }
+                catch
+                {
+                }
+
+                if (k == 0)
+                    try
+                    {
+                        k = (int)mGetKey.Invoke(d, null);
+                    }
+                    catch
+                    {
+                    }
+
                 if (k == key) return d;
             }
+
             return null;
         }
 
@@ -80,13 +89,16 @@ namespace EscapeFromDuckovCoopMod
         {
             if (IsServer || connectedPeer == null || d == null) return;
 
-            int key = 0;
+            var key = 0;
             try
             {
                 // 优先用缓存字段；无则重算（与 Door.GetKey 一致）
                 key = (int)AccessTools.Field(typeof(Door), "doorClosedDataKeyCached").GetValue(d);
             }
-            catch { }
+            catch
+            {
+            }
+
             if (key == 0) key = ComputeDoorKey(d.transform);
             if (key == 0) return;
 
@@ -100,11 +112,11 @@ namespace EscapeFromDuckovCoopMod
         }
 
         // 主机：处理客户端的设门请求
-        public void Server_HandleDoorSetRequest(LiteNetLib.NetPeer peer, NetPacketReader reader)
+        public void Server_HandleDoorSetRequest(NetPeer peer, NetPacketReader reader)
         {
             if (!IsServer) return;
-            int key = reader.GetInt();
-            bool closed = reader.GetBool();
+            var key = reader.GetInt();
+            var closed = reader.GetBool();
 
             var door = FindDoorByKey(key);
             if (!door) return;
@@ -141,7 +153,7 @@ namespace EscapeFromDuckovCoopMod
                 _applyingDoor = true;
 
                 var mSetClosed2 = AccessTools.Method(typeof(Door), "SetClosed",
-                                   new[] { typeof(bool), typeof(bool) });
+                    new[] { typeof(bool), typeof(bool) });
                 if (mSetClosed2 != null)
                 {
                     mSetClosed2.Invoke(door, new object[] { closed, true });
@@ -159,10 +171,5 @@ namespace EscapeFromDuckovCoopMod
                 _applyingDoor = false;
             }
         }
-
-
-
-
-
     }
 }

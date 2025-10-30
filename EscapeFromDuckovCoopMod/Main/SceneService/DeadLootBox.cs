@@ -14,21 +14,20 @@
 // MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
 // GNU Affero General Public License for more details.
 
-﻿using HarmonyLib;
+﻿using System;
+using System.Collections;
+using HarmonyLib;
 using ItemStatsSystem;
 using LiteNetLib;
 using LiteNetLib.Utils;
-using System;
-using System.Collections.Generic;
-using System.Linq;
-using System.Text;
-using System.Threading.Tasks;
 using UnityEngine;
+using UnityEngine.SceneManagement;
 
 namespace EscapeFromDuckovCoopMod
 {
-    public class DeadLootBox:MonoBehaviour
+    public class DeadLootBox : MonoBehaviour
     {
+        public const bool EAGER_BROADCAST_LOOT_STATE_ON_SPAWN = false;
         public static DeadLootBox Instance;
 
         private NetService Service => NetService.Instance;
@@ -38,14 +37,13 @@ namespace EscapeFromDuckovCoopMod
         private NetPeer connectedPeer => Service?.connectedPeer;
         private PlayerStatus localPlayerStatus => Service?.localPlayerStatus;
         private bool networkStarted => Service != null && Service.networkStarted;
-        public const bool EAGER_BROADCAST_LOOT_STATE_ON_SPAWN = false;
-
 
 
         public void Init()
         {
             Instance = this;
         }
+
         public void SpawnDeadLootboxAt(int aiId, int lootUid, Vector3 pos, Quaternion rot)
         {
             try
@@ -53,14 +51,22 @@ namespace EscapeFromDuckovCoopMod
                 AITool.TryClientRemoveNearestAICorpse(pos, 3.0f);
 
                 var prefab = GetDeadLootPrefabOnClient(aiId);
-                if (!prefab) { Debug.LogWarning("[LOOT] DeadLoot prefab not found on client, spawn aborted."); return; }
+                if (!prefab)
+                {
+                    Debug.LogWarning("[LOOT] DeadLoot prefab not found on client, spawn aborted.");
+                    return;
+                }
 
-                var go = UnityEngine.Object.Instantiate(prefab, pos, rot);
+                var go = Instantiate(prefab, pos, rot);
                 var box = go ? go.GetComponent<InteractableLootbox>() : null;
                 if (!box) return;
 
                 var inv = box.Inventory;
-                if (!inv) { Debug.LogWarning("[Client DeadLootBox Spawn] Inventory is null!"); return; }
+                if (!inv)
+                {
+                    Debug.LogWarning("[Client DeadLootBox Spawn] Inventory is null!");
+                    return;
+                }
 
                 WorldLootPrime.PrimeIfClient(box);
 
@@ -68,10 +74,15 @@ namespace EscapeFromDuckovCoopMod
                 var dict = InteractableLootbox.Inventories;
                 if (dict != null)
                 {
-                    int correctKey = LootManager.ComputeLootKeyFromPos(pos);
-                    int wrongKey = -1;
+                    var correctKey = LootManager.ComputeLootKeyFromPos(pos);
+                    var wrongKey = -1;
                     foreach (var kv in dict)
-                        if (kv.Value == inv && kv.Key != correctKey) { wrongKey = kv.Key; break; }
+                        if (kv.Value == inv && kv.Key != correctKey)
+                        {
+                            wrongKey = kv.Key;
+                            break;
+                        }
+
                     if (wrongKey != -1) dict.Remove(wrongKey);
                     dict[correctKey] = inv;
                 }
@@ -87,15 +98,23 @@ namespace EscapeFromDuckovCoopMod
                     COOPManager.LootNet._applyingLootState = true;
                     try
                     {
-                        int cap = Mathf.Clamp(pack.capacity, 1, 128);
-                        inv.Loading = true;               // ★ 进入批量
+                        var cap = Mathf.Clamp(pack.capacity, 1, 128);
+                        inv.Loading = true; // ★ 进入批量
                         inv.SetCapacity(cap);
 
-                        for (int i = inv.Content.Count - 1; i >= 0; --i)
+                        for (var i = inv.Content.Count - 1; i >= 0; --i)
                         {
-                            Item removed; inv.RemoveAt(i, out removed);
-                            try { if (removed) UnityEngine.Object.Destroy(removed.gameObject); } catch { }
+                            Item removed;
+                            inv.RemoveAt(i, out removed);
+                            try
+                            {
+                                if (removed) Destroy(removed.gameObject);
+                            }
+                            catch
+                            {
+                            }
                         }
+
                         foreach (var (p, snap) in pack.Item2)
                         {
                             var item = ItemTool.BuildItemFromSnapshot(snap);
@@ -104,9 +123,10 @@ namespace EscapeFromDuckovCoopMod
                     }
                     finally
                     {
-                        inv.Loading = false;              // ★ 结束批量
-                       COOPManager.LootNet._applyingLootState = false;
+                        inv.Loading = false; // ★ 结束批量
+                        COOPManager.LootNet._applyingLootState = false;
                     }
+
                     WorldLootPrime.PrimeIfClient(box);
                     return; // 吃完缓存就不再发请求
                 }
@@ -115,7 +135,7 @@ namespace EscapeFromDuckovCoopMod
                 COOPManager.LootNet.Client_RequestLootState(inv);
                 StartCoroutine(LootManager.Instance.ClearLootLoadingTimeout(inv, 1.5f));
             }
-            catch (System.Exception e)
+            catch (Exception e)
             {
                 Debug.LogError("[LOOT] SpawnDeadLootboxAt failed: " + e);
             }
@@ -130,10 +150,7 @@ namespace EscapeFromDuckovCoopMod
                 if (aiId > 0 && AITool.aiById.TryGetValue(aiId, out var cmc) && cmc)
                 {
                     Debug.LogWarning($"[SpawnDeadloot] AiID:{cmc.GetComponent<NetAiTag>().aiId}");
-                    if (cmc.deadLootBoxPrefab.gameObject == null)
-                    {
-                        Debug.LogWarning("[SPawnDead] deadLootBoxPrefab.gameObject null!");
-                    }
+                    if (cmc.deadLootBoxPrefab.gameObject == null) Debug.LogWarning("[SPawnDead] deadLootBoxPrefab.gameObject null!");
 
 
                     if (cmc != null)
@@ -147,7 +164,9 @@ namespace EscapeFromDuckovCoopMod
                     }
                 }
             }
-            catch { }
+            catch
+            {
+            }
 
             // 2) 兜底：沿用你现有逻辑（Main 或任意 CMC）
             try
@@ -159,36 +178,48 @@ namespace EscapeFromDuckovCoopMod
                     if (obj) return obj;
                 }
             }
-            catch { }
+            catch
+            {
+            }
 
             try
             {
-                var any = UnityEngine.GameObject.FindObjectOfType<CharacterMainControl>();
+                var any = FindObjectOfType<CharacterMainControl>();
                 if (any)
                 {
                     var obj = any.deadLootBoxPrefab.gameObject;
                     if (obj) return obj;
                 }
             }
-            catch { }
+            catch
+            {
+            }
+
             return null;
         }
+
         public void Server_OnDeadLootboxSpawned(InteractableLootbox box, CharacterMainControl whoDied)
         {
             if (!IsServer || box == null) return;
             try
             {
                 // 生成稳定 ID 并登记
-                int lootUid = LootManager.Instance._nextLootUid++;
+                var lootUid = LootManager.Instance._nextLootUid++;
                 var inv = box.Inventory;
                 if (inv) LootManager.Instance._srvLootByUid[lootUid] = inv;
 
-                int aiId = 0;
+                var aiId = 0;
                 if (whoDied)
                 {
                     var tag = whoDied.GetComponent<NetAiTag>();
                     if (tag != null) aiId = tag.aiId;
-                    if (aiId == 0) foreach (var kv in AITool.aiById) if (kv.Value == whoDied) { aiId = kv.Key; break; }
+                    if (aiId == 0)
+                        foreach (var kv in AITool.aiById)
+                            if (kv.Value == whoDied)
+                            {
+                                aiId = kv.Key;
+                                break;
+                            }
                 }
 
                 // >>> 放在 writer.Reset() 之前 <<<
@@ -196,10 +227,16 @@ namespace EscapeFromDuckovCoopMod
                 {
                     inv.NeedInspection = true;
                     // 尝试把“这个箱子以前被搜过”的标记也清空（有的版本有这个字段）
-                    try { Traverse.Create(inv).Field<bool>("hasBeenInspectedInLootBox").Value = false; } catch { }
+                    try
+                    {
+                        Traverse.Create(inv).Field<bool>("hasBeenInspectedInLootBox").Value = false;
+                    }
+                    catch
+                    {
+                    }
 
                     // 把当前内容全部标记为“未鉴定”
-                    for (int i = 0; i < inv.Content.Count; ++i)
+                    for (var i = 0; i < inv.Content.Count; ++i)
                     {
                         var it = inv.GetItemAt(i);
                         if (it) it.Inspected = false;
@@ -210,23 +247,23 @@ namespace EscapeFromDuckovCoopMod
                 // 稳定 ID
                 writer.Reset();
                 writer.Put((byte)Op.DEAD_LOOT_SPAWN);
-                writer.Put(UnityEngine.SceneManagement.SceneManager.GetActiveScene().buildIndex);
+                writer.Put(SceneManager.GetActiveScene().buildIndex);
                 writer.Put(aiId);
-                writer.Put(lootUid);                              // 稳定 ID
+                writer.Put(lootUid); // 稳定 ID
                 writer.PutV3cm(box.transform.position);
                 writer.PutQuaternion(box.transform.rotation);
-                netManager.SendToAll(writer, LiteNetLib.DeliveryMethod.ReliableOrdered);
+                netManager.SendToAll(writer, DeliveryMethod.ReliableOrdered);
 
                 if (EAGER_BROADCAST_LOOT_STATE_ON_SPAWN)
                     StartCoroutine(RebroadcastDeadLootStateAfterFill(box));
             }
-            catch (System.Exception e)
+            catch (Exception e)
             {
                 Debug.LogError("[LOOT] Server_OnDeadLootboxSpawned failed: " + e);
             }
         }
 
-        public System.Collections.IEnumerator RebroadcastDeadLootStateAfterFill(InteractableLootbox box)
+        public IEnumerator RebroadcastDeadLootStateAfterFill(InteractableLootbox box)
         {
             if (!EAGER_BROADCAST_LOOT_STATE_ON_SPAWN) yield break;
 
@@ -241,7 +278,7 @@ namespace EscapeFromDuckovCoopMod
             if (!IsServer || box == null) return;
             try
             {
-                int lootUid = LootManager.Instance._nextLootUid++;
+                var lootUid = LootManager.Instance._nextLootUid++;
                 var inv = box.Inventory;
                 if (inv) LootManager.Instance._srvLootByUid[lootUid] = inv;
 
@@ -250,24 +287,18 @@ namespace EscapeFromDuckovCoopMod
 
                 writer.Reset();
                 writer.Put((byte)Op.DEAD_LOOT_SPAWN);
-                writer.Put(UnityEngine.SceneManagement.SceneManager.GetActiveScene().buildIndex);
+                writer.Put(SceneManager.GetActiveScene().buildIndex);
                 writer.PutV3cm(box.transform.position);
                 writer.PutQuaternion(box.transform.rotation);
-                netManager.SendToAll(writer, LiteNetLib.DeliveryMethod.ReliableOrdered);
+                netManager.SendToAll(writer, DeliveryMethod.ReliableOrdered);
 
                 // 2) 可选：是否立刻广播整箱内容（默认不广播，等客户端真正打开时再按需请求）
-                if (EAGER_BROADCAST_LOOT_STATE_ON_SPAWN)
-                {
-                   COOPManager.LootNet.Server_SendLootboxState(null, box.Inventory); // 如需老行为，打开上面的开关即可
-                }
+                if (EAGER_BROADCAST_LOOT_STATE_ON_SPAWN) COOPManager.LootNet.Server_SendLootboxState(null, box.Inventory); // 如需老行为，打开上面的开关即可
             }
-            catch (System.Exception e)
+            catch (Exception e)
             {
                 Debug.LogError("[LOOT] Server_OnDeadLootboxSpawned failed: " + e);
             }
         }
-
-
-
     }
 }

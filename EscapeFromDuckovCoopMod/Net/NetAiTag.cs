@@ -14,26 +14,28 @@
 // MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
 // GNU Affero General Public License for more details.
 
-﻿using System;
-using System.Collections.Generic;
-using System.Linq;
-using System.Text;
-using System.Threading.Tasks;
-using UnityEngine;
+﻿using UnityEngine;
 
 namespace EscapeFromDuckovCoopMod
 {
     public sealed class NetAiTag : MonoBehaviour
     {
         public int aiId;
-        public int? iconTypeOverride;   // 来自主机的 CharacterIconTypes（int）
-        public bool? showNameOverride;  // 主机裁决是否显示名字
-        public string nameOverride;     // 主机下发的显示名（纯文本
+        public string nameOverride; // 主机下发的显示名（纯文本
+        public int? iconTypeOverride; // 来自主机的 CharacterIconTypes（int）
+        public bool? showNameOverride; // 主机裁决是否显示名字
 
-        void Awake() { Guard(); }
-        void OnEnable() { Guard(); }
+        private void Awake()
+        {
+            Guard();
+        }
 
-        void Guard()
+        private void OnEnable()
+        {
+            Guard();
+        }
+
+        private void Guard()
         {
             try
             {
@@ -41,14 +43,11 @@ namespace EscapeFromDuckovCoopMod
                 var mod = ModBehaviourF.Instance;
                 if (!cmc || mod == null) return;
 
-                if (!AITool.IsRealAI(cmc))
-                {
-                    Destroy(this);
-                }
+                if (!AITool.IsRealAI(cmc)) Destroy(this);
             }
-            catch { }
+            catch
+            {
+            }
         }
     }
-
-
 }

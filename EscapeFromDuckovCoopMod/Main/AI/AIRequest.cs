@@ -16,16 +16,11 @@
 
 ﻿using LiteNetLib;
 using LiteNetLib.Utils;
-using System;
-using System.Collections.Generic;
-using System.Linq;
-using System.Text;
-using System.Threading.Tasks;
 using UnityEngine;
 
 namespace EscapeFromDuckovCoopMod
 {
-    public class AIRequest:MonoBehaviour
+    public class AIRequest : MonoBehaviour
     {
         public static AIRequest Instance;
 
@@ -36,6 +31,7 @@ namespace EscapeFromDuckovCoopMod
         private static NetPeer connectedPeer => Service?.connectedPeer;
         private static PlayerStatus localPlayerStatus => Service?.localPlayerStatus;
         private static bool networkStarted => Service != null && Service.networkStarted;
+
         public void Init()
         {
             Instance = this;
@@ -46,20 +42,25 @@ namespace EscapeFromDuckovCoopMod
         {
             if (!IsServer || r == null) return;
 
-            int idA = AITool.StableRootId(r);      // 现有策略：优先用 SpawnerGuid
-            int idB = AITool.StableRootId_Alt(r);  // 兼容策略：忽略 guid，用 名称+位置+场景
+            var idA = AITool.StableRootId(r); // 现有策略：优先用 SpawnerGuid
+            var idB = AITool.StableRootId_Alt(r); // 兼容策略：忽略 guid，用 名称+位置+场景
 
-            int seed = AITool.DeriveSeed(COOPManager.AIHandle.sceneSeed, idA);
-            COOPManager.AIHandle.aiRootSeeds[idA] = seed;        // 主机本地记录，便于调试
+            var seed = AITool.DeriveSeed(COOPManager.AIHandle.sceneSeed, idA);
+            COOPManager.AIHandle.aiRootSeeds[idA] = seed; // 主机本地记录，便于调试
 
             var w = writer;
             if (w == null) return;
             w.Reset();
             w.Put((byte)Op.AI_SEED_PATCH);
-            int count = (idA == idB) ? 1 : 2;
+            var count = idA == idB ? 1 : 2;
             w.Put(count);
-            w.Put(idA); w.Put(seed);
-            if (count == 2) { w.Put(idB); w.Put(seed); }
+            w.Put(idA);
+            w.Put(seed);
+            if (count == 2)
+            {
+                w.Put(idB);
+                w.Put(seed);
+            }
 
             if (target == null) CoopTool.BroadcastReliable(w);
             else target.Send(w, DeliveryMethod.ReliableOrdered);
@@ -71,10 +72,6 @@ namespace EscapeFromDuckovCoopMod
             if (!AIName._iconRebroadcastScheduled.Add(aiId)) return; // 只安排一次
 
             StartCoroutine(AIName.IconRebroadcastRoutine(aiId, cmc));
-
         }
-
-
-
     }
 }

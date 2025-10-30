@@ -14,13 +14,9 @@
 // MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
 // GNU Affero General Public License for more details.
 
-﻿using LiteNetLib;
+﻿using System.Collections.Generic;
+using LiteNetLib;
 using LiteNetLib.Utils;
-using System;
-using System.Collections.Generic;
-using System.Linq;
-using System.Text;
-using System.Threading.Tasks;
 using UnityEngine;
 
 namespace EscapeFromDuckovCoopMod
@@ -37,10 +33,12 @@ namespace EscapeFromDuckovCoopMod
         private PlayerStatus localPlayerStatus => Service?.localPlayerStatus;
         private bool networkStarted => Service != null && Service.networkStarted;
         private Dictionary<NetPeer, PlayerStatus> playerStatuses => Service?.playerStatuses;
+
         public void Init()
         {
             Instance = this;
         }
+
         public void SendPlayerStatusUpdate()
         {
             if (!IsServer) return;
@@ -49,7 +47,7 @@ namespace EscapeFromDuckovCoopMod
             foreach (var kvp in playerStatuses) statuses.Add(kvp.Value);
 
             writer.Reset();
-            writer.Put((byte)Op.PLAYER_STATUS_UPDATE);     // opcode
+            writer.Put((byte)Op.PLAYER_STATUS_UPDATE); // opcode
             writer.Put(statuses.Count);
 
             foreach (var st in statuses)
@@ -61,16 +59,16 @@ namespace EscapeFromDuckovCoopMod
                 writer.PutVector3(st.Position);
                 writer.PutQuaternion(st.Rotation);
 
-                string sid = st.SceneId;
+                var sid = st.SceneId;
                 writer.Put(sid ?? string.Empty);
 
                 writer.Put(st.CustomFaceJson ?? "");
 
-                var equipmentList = st == localPlayerStatus ? LoaclPlayerManager.Instance.GetLocalEquipment() : (st.EquipmentList ?? new List<EquipmentSyncData>());
+                var equipmentList = st == localPlayerStatus ? LoaclPlayerManager.Instance.GetLocalEquipment() : st.EquipmentList ?? new List<EquipmentSyncData>();
                 writer.Put(equipmentList.Count);
                 foreach (var e in equipmentList) e.Serialize(writer);
 
-                var weaponList = st == localPlayerStatus ? LoaclPlayerManager.Instance.GetLocalWeapons() : (st.WeaponList ?? new List<WeaponSyncData>());
+                var weaponList = st == localPlayerStatus ? LoaclPlayerManager.Instance.GetLocalWeapons() : st.WeaponList ?? new List<WeaponSyncData>();
                 writer.Put(weaponList.Count);
                 foreach (var w in weaponList) w.Serialize(writer);
             }
@@ -89,8 +87,8 @@ namespace EscapeFromDuckovCoopMod
             var tr = main.transform;
             var mr = main.modelRoot ? main.modelRoot.transform : null;
 
-            Vector3 pos = tr.position;
-            Vector3 fwd = mr ? mr.forward : tr.forward;
+            var pos = tr.position;
+            var fwd = mr ? mr.forward : tr.forward;
             if (fwd.sqrMagnitude < 1e-12f) fwd = Vector3.forward;
 
 
@@ -99,8 +97,8 @@ namespace EscapeFromDuckovCoopMod
             writer.Put(localPlayerStatus.EndPoint);
 
             // 统一：量化坐标 + 方向
-            NetPack.PutV3cm(writer, pos);
-            NetPack.PutDir(writer, fwd);
+            writer.PutV3cm(pos);
+            writer.PutDir(fwd);
 
             if (IsServer) netManager.SendToAll(writer, DeliveryMethod.Unreliable);
             else connectedPeer?.Send(writer, DeliveryMethod.Unreliable);
@@ -126,7 +124,7 @@ namespace EscapeFromDuckovCoopMod
             if (localPlayerStatus == null || !networkStarted) return;
 
             writer.Reset();
-            writer.Put((byte)Op.PLAYERWEAPON_UPDATE);    // opcode
+            writer.Put((byte)Op.PLAYERWEAPON_UPDATE); // opcode
             writer.Put(localPlayerStatus.EndPoint);
             writer.Put(weaponSyncData.SlotHash);
             writer.Put(weaponSyncData.ItemId ?? "");
@@ -150,11 +148,11 @@ namespace EscapeFromDuckovCoopMod
 
             var anim = animCtrl.animator;
             var state = anim.GetCurrentAnimatorStateInfo(0);
-            int stateHash = state.shortNameHash;
-            float normTime = state.normalizedTime;
+            var stateHash = state.shortNameHash;
+            var normTime = state.normalizedTime;
 
             writer.Reset();
-            writer.Put((byte)Op.ANIM_SYNC);                      // opcode
+            writer.Put((byte)Op.ANIM_SYNC); // opcode
 
             if (IsServer)
             {
@@ -194,12 +192,12 @@ namespace EscapeFromDuckovCoopMod
             // 仅客户端上报；主机不需要发
             if (!networkStarted || IsServer || connectedPeer == null || who == null) return;
 
-            var item = who.CharacterItem;            // 本机一定能拿到
+            var item = who.CharacterItem; // 本机一定能拿到
             if (item == null) return;
 
             // 尸体位置/朝向尽量贴近角色模型
             var pos = who.transform.position;
-            var rot = (who.characterModel ? who.characterModel.transform.rotation : who.transform.rotation);
+            var rot = who.characterModel ? who.characterModel.transform.rotation : who.transform.rotation;
 
             // 组包并发送
             writer.Reset();
@@ -212,13 +210,5 @@ namespace EscapeFromDuckovCoopMod
 
             connectedPeer.Send(writer, DeliveryMethod.ReliableOrdered);
         }
-
-
-
-
-
-
-
-
     }
 }

@@ -15,27 +15,29 @@
 // GNU Affero General Public License for more details.
 
 ﻿using HarmonyLib;
-using System;
-using System.Collections.Generic;
-using System.Linq;
-using System.Text;
-using System.Threading.Tasks;
 
 namespace EscapeFromDuckovCoopMod
 {
     //给 CharacterItemControl.PickupItem 打前后钩，围出一个方法域
     [HarmonyPatch(typeof(CharacterItemControl), nameof(CharacterItemControl.PickupItem))]
-    static class Patch_CharacterItemControl_PickupItem
+    internal static class Patch_CharacterItemControl_PickupItem
     {
-        static void Prefix() { NetSilenceGuards.InPickupItem = true; }
-        static void Finalizer() { NetSilenceGuards.InPickupItem = false; }
+        private static void Prefix()
+        {
+            NetSilenceGuards.InPickupItem = true;
+        }
+
+        private static void Finalizer()
+        {
+            NetSilenceGuards.InPickupItem = false;
+        }
     }
 
 
     [HarmonyPatch(typeof(CharacterAnimationControl_MagicBlend), "Update")]
-    static class Patch_MagicBlend_Update_ForRemote
+    internal static class Patch_MagicBlend_Update_ForRemote
     {
-        static bool Prefix(CharacterAnimationControl_MagicBlend __instance)
+        private static bool Prefix(CharacterAnimationControl_MagicBlend __instance)
         {
             // 远端实体：禁用本地“写Animator参数”的逻辑，避免覆盖网络同步
             if (__instance && __instance.GetComponentInParent<RemoteReplicaTag>() != null)
@@ -43,8 +45,4 @@ namespace EscapeFromDuckovCoopMod
             return true;
         }
     }
-
-
-
-
 }

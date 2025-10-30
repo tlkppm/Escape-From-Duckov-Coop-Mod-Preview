@@ -14,21 +14,83 @@
 // MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
 // GNU Affero General Public License for more details.
 
-﻿using Cysharp.Threading.Tasks;
+﻿using System;
+using System.Collections.Generic;
+using System.Reflection;
+using Cysharp.Threading.Tasks;
 using HarmonyLib;
 using LiteNetLib;
 using LiteNetLib.Utils;
-using System;
-using System.Collections.Generic;
-using System.Linq;
-using System.Text;
-using System.Threading.Tasks;
 using UnityEngine;
+using Object = UnityEngine.Object;
+using Random = UnityEngine.Random;
 
 namespace EscapeFromDuckovCoopMod
 {
     public class AIHandle
     {
+        private const byte AI_LOADOUT_VER = 5;
+
+
+        // --- 反编译类的私有序列化字段直达句柄---
+        private static readonly AccessTools.FieldRef<CharacterRandomPreset, bool>
+            FR_UsePlayerPreset = AccessTools.FieldRefAccess<CharacterRandomPreset, bool>("usePlayerPreset");
+
+        private static readonly AccessTools.FieldRef<CharacterRandomPreset, CustomFacePreset>
+            FR_FacePreset = AccessTools.FieldRefAccess<CharacterRandomPreset, CustomFacePreset>("facePreset");
+
+        private static readonly AccessTools.FieldRef<CharacterRandomPreset, CharacterModel>
+            FR_CharacterModel = AccessTools.FieldRefAccess<CharacterRandomPreset, CharacterModel>("characterModel");
+
+        // 反射字段（Health 反编译字段）研究了20年研究出来的
+        private static readonly FieldInfo FI_defaultMax =
+            typeof(Health).GetField("defaultMaxHealth", BindingFlags.NonPublic | BindingFlags.Instance);
+
+        private static readonly FieldInfo FI_lastMax =
+            typeof(Health).GetField("lastMaxHealth", BindingFlags.NonPublic | BindingFlags.Instance);
+
+        private static readonly FieldInfo FI__current =
+            typeof(Health).GetField("_currentHealth", BindingFlags.NonPublic | BindingFlags.Instance);
+
+        private static readonly FieldInfo FI_characterCached =
+            typeof(Health).GetField("characterCached", BindingFlags.NonPublic | BindingFlags.Instance);
+
+        private static readonly FieldInfo FI_hasCharacter =
+            typeof(Health).GetField("hasCharacter", BindingFlags.NonPublic | BindingFlags.Instance);
+
+        public readonly Dictionary<Health, float> _cliAiMaxOverride = new Dictionary<Health, float>();
+
+        // aiId -> 待应用的负载（若实体还未就绪）
+        public readonly Dictionary<int, float> _cliPendingAiHealth = new Dictionary<int, float>();
+
+        // 客户端：AI 血量 pending（cur 已有，这里补 max）
+        public readonly Dictionary<int, float> _cliPendingAiMax = new Dictionary<int, float>();
+
+        // 待绑定时的暂存（客户端）
+        private readonly Dictionary<int, AiAnimState> _pendingAiAnims = new Dictionary<int, AiAnimState>();
+        public readonly Dictionary<int, int> aiRootSeeds = new Dictionary<int, int>(); // rootId -> seed
+
+        public readonly Dictionary<int, (
+            List<(int slot, int tid)> equips,
+            List<(int slot, int tid)> weapons,
+            string faceJson,
+            string modelName,
+            int iconType,
+            bool showName,
+            string displayName
+            )> pendingAiLoadouts
+            = new Dictionary<int, (
+                List<(int slot, int tid)> equips,
+                List<(int slot, int tid)> weapons,
+                string faceJson,
+                string modelName,
+                int iconType,
+                bool showName,
+                string displayName
+                )>();
+
+        public bool freezeAI = true; // 先冻结用来验证一致性
+        public int sceneSeed;
         private NetService Service => NetService.Instance;
 
         private bool IsServer => Service != null && Service.IsServer;
@@ -40,62 +102,30 @@ namespace EscapeFromDuckovCoopMod
         private Dictionary<NetPeer, GameObject> remoteCharacters => Service?.remoteCharacters;
         private Dictionary<NetPeer, PlayerStatus> playerStatuses => Service?.playerStatuses;
         private Dictionary<string, GameObject> clientRemoteCharacters => Service?.clientRemoteCharacters;
-        public readonly Dictionary<int, int> aiRootSeeds = new Dictionary<int, int>(); // rootId -> seed
-        public int sceneSeed = 0;
-        public bool freezeAI = true;  // 先冻结用来验证一致性
-
-        // aiId -> 待应用的负载（若实体还未就绪）
-        public readonly Dictionary<int, float> _cliPendingAiHealth = new Dictionary<int, float>();
-        // 客户端：AI 血量 pending（cur 已有，这里补 max）
-        public readonly Dictionary<int, float> _cliPendingAiMax = new Dictionary<int, float>();
-        public readonly Dictionary<Health, float> _cliAiMaxOverride = new Dictionary<Health, float>();
-        // 待绑定时的暂存（客户端）
-        private readonly Dictionary<int, AiAnimState> _pendingAiAnims = new Dictionary<int, AiAnimState>();
-
-        const byte AI_LOADOUT_VER = 5;
-
-        public readonly Dictionary<int, (
-   List<(int slot, int tid)> equips,
-   List<(int slot, int tid)> weapons,
-   string faceJson,
-   string modelName,
-   int iconType,
-   bool showName,
-   string displayName
-   )> pendingAiLoadouts
-   = new Dictionary<int, (
-       List<(int slot, int tid)> equips,
-       List<(int slot, int tid)> weapons,
-       string faceJson,
-       string modelName,
-       int iconType,
-       bool showName,
-       string displayName
-   )>();
 
 
-       public  void Server_SendAiSeeds(NetPeer target = null)
+        public void Server_SendAiSeeds(NetPeer target = null)
         {
             if (!IsServer) return;
 
             aiRootSeeds.Clear();
             // 场景种子：时间戳 XOR Unity 随机
-            sceneSeed = Environment.TickCount ^ UnityEngine.Random.Range(int.MinValue, int.MaxValue);
+            sceneSeed = Environment.TickCount ^ Random.Range(int.MinValue, int.MaxValue);
 
-            var roots = UnityEngine.Object.FindObjectsOfType<CharacterSpawnerRoot>(true);
+            var roots = Object.FindObjectsOfType<CharacterSpawnerRoot>(true);
 
             // 先算出待发送的 (id,seed) 对；对每个 root 同时加入 “主ID(可能用guid)” 和 “兼容ID(强制忽略guid)”
-            var pairs = new System.Collections.Generic.List<(int id, int seed)>(roots.Length * 2);
+            var pairs = new List<(int id, int seed)>(roots.Length * 2);
             foreach (var r in roots)
             {
-                int idA = AITool.StableRootId(r);         // 现有策略：SpawnerGuid!=0 就用 guid，否则哈希
-                int idB = AITool.StableRootId_Alt(r);     // 兼容策略：强制忽略 guid
+                var idA = AITool.StableRootId(r); // 现有策略：SpawnerGuid!=0 就用 guid，否则哈希
+                var idB = AITool.StableRootId_Alt(r); // 兼容策略：强制忽略 guid
 
-                int seed = AITool.DeriveSeed(sceneSeed, idA);
-                aiRootSeeds[idA] = seed;           // 主机本地记录（可用于调试）
+                var seed = AITool.DeriveSeed(sceneSeed, idA);
+                aiRootSeeds[idA] = seed; // 主机本地记录（可用于调试）
 
                 pairs.Add((idA, seed));
-                if (idB != idA) pairs.Add((idB, seed));  // 双映射，客户端无论算到哪条 id 都能命中
+                if (idB != idA) pairs.Add((idB, seed)); // 双映射，客户端无论算到哪条 id 都能命中
             }
 
             var w = writer;
@@ -103,7 +133,7 @@ namespace EscapeFromDuckovCoopMod
             w.Reset();
             w.Put((byte)Op.AI_SEED_SNAPSHOT);
             w.Put(sceneSeed);
-            w.Put(pairs.Count);                     // 注意：这里是 “(id,seed) 对”的总数
+            w.Put(pairs.Count); // 注意：这里是 “(id,seed) 对”的总数
 
             foreach (var pr in pairs)
             {
@@ -122,25 +152,35 @@ namespace EscapeFromDuckovCoopMod
         {
             sceneSeed = r.GetInt();
             aiRootSeeds.Clear();
-            int n = r.GetInt();
-            for (int i = 0; i < n; i++)
+            var n = r.GetInt();
+            for (var i = 0; i < n; i++)
             {
-                int id = r.GetInt();
-                int seed = r.GetInt();
+                var id = r.GetInt();
+                var seed = r.GetInt();
                 aiRootSeeds[id] = seed;
             }
+
             Debug.Log($"[AI-SEED] 收到 {n} 个 Root 的种子");
         }
 
 
         public void RegisterAi(int aiId, CharacterMainControl cmc)
         {
-            if (! AITool.IsRealAI(cmc)) return;
+            if (!AITool.IsRealAI(cmc)) return;
             AITool.aiById[aiId] = cmc;
 
             float pendCur = -1f, pendMax = -1f;
-            if (_cliPendingAiHealth.TryGetValue(aiId, out var pc)) { pendCur = pc; _cliPendingAiHealth.Remove(aiId); }
-            if (_cliPendingAiMax.TryGetValue(aiId, out var pm)) { pendMax = pm; _cliPendingAiMax.Remove(aiId); }
+            if (_cliPendingAiHealth.TryGetValue(aiId, out var pc))
+            {
+                pendCur = pc;
+                _cliPendingAiHealth.Remove(aiId);
+            }
+
+            if (_cliPendingAiMax.TryGetValue(aiId, out var pm))
+            {
+                pendMax = pm;
+                _cliPendingAiMax.Remove(aiId);
+            }
 
             var h = cmc.Health;
             if (h)
@@ -148,15 +188,35 @@ namespace EscapeFromDuckovCoopMod
                 if (pendMax > 0f)
                 {
                     _cliAiMaxOverride[h] = pendMax;
-                    try { FI_defaultMax?.SetValue(h, Mathf.RoundToInt(pendMax)); } catch { }
-                    try { FI_lastMax?.SetValue(h, -12345f); } catch { }
-                    try { h.OnMaxHealthChange?.Invoke(h); } catch { }
+                    try
+                    {
+                        FI_defaultMax?.SetValue(h, Mathf.RoundToInt(pendMax));
+                    }
+                    catch
+                    {
+                    }
+
+                    try
+                    {
+                        FI_lastMax?.SetValue(h, -12345f);
+                    }
+                    catch
+                    {
+                    }
+
+                    try
+                    {
+                        h.OnMaxHealthChange?.Invoke(h);
+                    }
+                    catch
+                    {
+                    }
                 }
 
                 if (pendCur >= 0f || pendMax > 0f)
                 {
-                    float applyMax = (pendMax > 0f) ? pendMax : h.MaxHealth;
-                    HealthM.Instance.ForceSetHealth(h, applyMax, Mathf.Max(0f, pendCur >= 0f ? pendCur : h.CurrentHealth), ensureBar: true);
+                    var applyMax = pendMax > 0f ? pendMax : h.MaxHealth;
+                    HealthM.Instance.ForceSetHealth(h, applyMax, Mathf.Max(0f, pendCur >= 0f ? pendCur : h.CurrentHealth));
                 }
             }
 
@@ -178,7 +238,9 @@ namespace EscapeFromDuckovCoopMod
                     if (tag == null) tag = cmc.gameObject.AddComponent<NetAiTag>();
                     if (tag.aiId != aiId) tag.aiId = aiId;
                 }
-                catch { }
+                catch
+                {
+                }
 
                 if (!cmc.GetComponent<RemoteReplicaTag>()) cmc.gameObject.AddComponent<RemoteReplicaTag>();
 
@@ -195,11 +257,10 @@ namespace EscapeFromDuckovCoopMod
             {
                 pendingAiLoadouts.Remove(aiId);
                 Client_ApplyAiLoadout(aiId, data.equips, data.weapons, data.faceJson, data.modelName, data.iconType, data.showName, data.displayName).Forget();
-
             }
         }
 
-  
+
         public void Server_BroadcastAiLoadout(int aiId, CharacterMainControl cmc)
         {
             if (!IsServer || cmc == null) return;
@@ -210,14 +271,14 @@ namespace EscapeFromDuckovCoopMod
             writer.Put(aiId);
 
             // ---- 装备（5 槽）----
-            var eqList = AITool.GetLocalAIEquipment(cmc);   // 新方法，已枚举 armor/helmat/faceMask/backpack/headset
+            var eqList = AITool.GetLocalAIEquipment(cmc); // 新方法，已枚举 armor/helmat/faceMask/backpack/headset
             writer.Put(eqList.Count);
             foreach (var eq in eqList)
             {
                 writer.Put(eq.SlotHash);
 
                 // 线上的老协议依然是 int tid，这里从 string ItemId 安全转换
-                int tid = 0;
+                var tid = 0;
                 if (!string.IsNullOrEmpty(eq.ItemId))
                     int.TryParse(eq.ItemId, out tid);
 
@@ -231,7 +292,11 @@ namespace EscapeFromDuckovCoopMod
             if (gun != null) listW.Add(((int)gun.handheldSocket, gun.Item ? gun.Item.TypeID : 0));
             if (melee != null) listW.Add(((int)melee.handheldSocket, melee.Item ? melee.Item.TypeID : 0));
             writer.Put(listW.Count);
-            foreach (var p in listW) { writer.Put(p.slot); writer.Put(p.tid); }
+            foreach (var p in listW)
+            {
+                writer.Put(p.slot);
+                writer.Put(p.tid);
+            }
 
             // ---- 脸 JSON（主机权威）----
             string faceJson = null;
@@ -258,27 +323,30 @@ namespace EscapeFromDuckovCoopMod
 
 
             // ---- 模型名 + 图标类型 + showName(主机裁决) ----
-            string modelName = AIName.NormalizePrefabName(cmc.characterModel ? cmc.characterModel.name : null);
+            var modelName = AIName.NormalizePrefabName(cmc.characterModel ? cmc.characterModel.name : null);
 
-            int iconType = 0;
-            bool showName = false;
+            var iconType = 0;
+            var showName = false;
             try
             {
                 var pr = cmc.characterPreset;
                 if (pr)
                 {
-                    var e = (global::CharacterIconTypes)iconType;
+                    var e = (CharacterIconTypes)iconType;
                     // 1) 若是 none，尝试用本地预设再取一次（有些预设在运行时被填充）
-                    if (e == global::CharacterIconTypes.none && pr.GetCharacterIcon() != null)
+                    if (e == CharacterIconTypes.none && pr.GetCharacterIcon() != null)
                         iconType = (int)AIName.FR_IconType(pr);
 
                     // 2) 对 boss / elete 强制 showName=true，避免客户端再兜底
-                    e = (global::CharacterIconTypes)iconType;
-                    if (!showName && (e == global::CharacterIconTypes.boss || e == global::CharacterIconTypes.elete))
+                    e = (CharacterIconTypes)iconType;
+                    if (!showName && (e == CharacterIconTypes.boss || e == CharacterIconTypes.elete))
                         showName = true;
                 }
             }
-            catch { /* 忽略兜底异常 */ }
+            catch
+            {
+                /* 忽略兜底异常 */
+            }
 
             writer.Put(!string.IsNullOrEmpty(modelName));
             if (!string.IsNullOrEmpty(modelName)) writer.Put(modelName);
@@ -292,43 +360,45 @@ namespace EscapeFromDuckovCoopMod
                 var preset = cmc.characterPreset;
                 if (preset) displayName = preset.Name; // 或者你自己的名字来源
             }
-            catch { }
+            catch
+            {
+            }
 
             writer.Put(!string.IsNullOrEmpty(displayName)); // hasName
             if (!string.IsNullOrEmpty(displayName))
                 writer.Put(displayName);
 
 
-                Debug.Log($"[AI-SEND] ver={AI_LOADOUT_VER} aiId={aiId} model='{modelName}' icon={iconType} showName={showName}");
+            Debug.Log($"[AI-SEND] ver={AI_LOADOUT_VER} aiId={aiId} model='{modelName}' icon={iconType} showName={showName}");
 
-           CoopTool.BroadcastReliable(writer);
+            CoopTool.BroadcastReliable(writer);
 
-            if (iconType == (int)global::CharacterIconTypes.none)
-               AIRequest.Instance.Server_TryRebroadcastIconLater(aiId, cmc);
+            if (iconType == (int)CharacterIconTypes.none)
+                AIRequest.Instance.Server_TryRebroadcastIconLater(aiId, cmc);
         }
 
         public UniTask Client_ApplyAiLoadout(
-    int aiId,
-    List<(int slot, int tid)> equips,
-    List<(int slot, int tid)> weapons,
-    string faceJson,
-    string modelName,
-    int iconType,
-    bool showName)
+            int aiId,
+            List<(int slot, int tid)> equips,
+            List<(int slot, int tid)> weapons,
+            string faceJson,
+            string modelName,
+            int iconType,
+            bool showName)
         {
             return Client_ApplyAiLoadout(
                 aiId, equips, weapons, faceJson, modelName, iconType, showName, null);
         }
 
         public async UniTask Client_ApplyAiLoadout(
-           int aiId,
-           List<(int slot, int tid)> equips,
-           List<(int slot, int tid)> weapons,
-           string faceJson,
-           string modelName,
-           int iconType,
-           bool showName,
-           string displayNameFromHost)
+            int aiId,
+            List<(int slot, int tid)> equips,
+            List<(int slot, int tid)> weapons,
+            string faceJson,
+            string modelName,
+            int iconType,
+            bool showName,
+            string displayNameFromHost)
         {
             if (!AITool.aiById.TryGetValue(aiId, out var cmc) || !cmc) return;
 
@@ -337,28 +407,40 @@ namespace EscapeFromDuckovCoopMod
             if (!string.IsNullOrEmpty(modelName))
                 prefab = AIName.FindCharacterModelByName_Any(modelName);
             if (!prefab)
-            {
-                try { var pr = cmc.characterPreset; if (pr) prefab = FR_CharacterModel(pr); } catch { }
-            }
+                try
+                {
+                    var pr = cmc.characterPreset;
+                    if (pr) prefab = FR_CharacterModel(pr);
+                }
+                catch
+                {
+                }
 
             try
             {
                 var cur = cmc.characterModel;
-                string curName = AIName.NormalizePrefabName(cur ? cur.name : null);
-                string tgtName = AIName.NormalizePrefabName(prefab ? prefab.name : null);
+                var curName = AIName.NormalizePrefabName(cur ? cur.name : null);
+                var tgtName = AIName.NormalizePrefabName(prefab ? prefab.name : null);
                 if (prefab && !string.Equals(curName, tgtName, StringComparison.OrdinalIgnoreCase))
                 {
-                    var inst = UnityEngine.Object.Instantiate(prefab);
-                   Debug.Log($"[AI-APPLY] aiId={aiId} SetCharacterModel -> '{tgtName}' (cur='{curName}')");
+                    var inst = Object.Instantiate(prefab);
+                    Debug.Log($"[AI-APPLY] aiId={aiId} SetCharacterModel -> '{tgtName}' (cur='{curName}')");
                     cmc.SetCharacterModel(inst);
                 }
             }
-            catch { }
+            catch
+            {
+            }
 
             // 等待模型就绪
             var model = cmc.characterModel;
-            int guard = 0;
-            while (!model && guard++ < 120) { await UniTask.Yield(); model = cmc.characterModel; }
+            var guard = 0;
+            while (!model && guard++ < 120)
+            {
+                await UniTask.Yield();
+                model = cmc.characterModel;
+            }
+
             if (!model) return;
 
             // 2) 名字 & 图标：以主机为主，客户端兜底 + 对特殊类型强制显示名字
@@ -368,15 +450,28 @@ namespace EscapeFromDuckovCoopMod
                 var preset = cmc.characterPreset;
                 if (preset)
                 {
-                    try { AIName.FR_IconType(preset) = (global::CharacterIconTypes)iconType; } catch { }
-                    try { preset.showName = showName; } catch { }
+                    try
+                    {
+                        AIName.FR_IconType(preset) = (CharacterIconTypes)iconType;
+                    }
+                    catch
+                    {
+                    }
+
+                    try
+                    {
+                        preset.showName = showName;
+                    }
+                    catch
+                    {
+                    }
                 }
 
                 // 1) 通过统一样式解析枚举 → Sprite（不从本地 preset 拿）
-                var sprite = AIName. ResolveIconSprite(iconType);
+                var sprite = AIName.ResolveIconSprite(iconType);
 
                 // UIStyle 可能尚未 ready；若是 null，延迟几帧重试兜底
-                int tries = 0;
+                var tries = 0;
                 while (sprite == null && tries++ < 5)
                 {
                     await UniTask.Yield();
@@ -384,15 +479,18 @@ namespace EscapeFromDuckovCoopMod
                 }
 
                 // 2) 名字就是主机下发的文本；不做本地推导
-                string displayName = showName ? displayNameFromHost : null;
+                var displayName = showName ? displayNameFromHost : null;
 
                 await AIName.RefreshNameIconWithRetries(cmc, iconType, showName, displayNameFromHost);
 
 
-                    Debug.Log($"[AI-APPLY] aiId={aiId} icon={(CharacterIconTypes)iconType} showName={showName} name='{displayName ?? "(null)"}'");
-                Debug.Log($"[NOW AI] aiId={aiId} icon={Traverse.Create(cmc.characterPreset).Field<CharacterIconTypes>("characterIconType").Value} showName={showName} name='{Traverse.Create(cmc.characterPreset).Field<string>("nameKey").Value ?? "(null)"}'");
+                Debug.Log($"[AI-APPLY] aiId={aiId} icon={(CharacterIconTypes)iconType} showName={showName} name='{displayName ?? "(null)"}'");
+                Debug.Log(
+                    $"[NOW AI] aiId={aiId} icon={Traverse.Create(cmc.characterPreset).Field<CharacterIconTypes>("characterIconType").Value} showName={showName} name='{Traverse.Create(cmc.characterPreset).Field<string>("nameKey").Value ?? "(null)"}'");
             }
-            catch { }
+            catch
+            {
+            }
 
             // 3) 服装（保持你原来的逻辑）
             foreach (var (slotHash, typeId) in equips)
@@ -431,7 +529,7 @@ namespace EscapeFromDuckovCoopMod
                 if (!item) continue;
 
                 // 解析插槽：未知值统一右手
-                HandheldSocketTypes socket = Enum.IsDefined(typeof(HandheldSocketTypes), slotHash)
+                var socket = Enum.IsDefined(typeof(HandheldSocketTypes), slotHash)
                     ? (HandheldSocketTypes)slotHash
                     : HandheldSocketTypes.normalHandheld;
 
@@ -439,10 +537,21 @@ namespace EscapeFromDuckovCoopMod
                 try
                 {
                     var ag = item.ActiveAgent;
-                    if (ag && ag.gameObject) UnityEngine.Object.Destroy(ag.gameObject);
+                    if (ag && ag.gameObject) Object.Destroy(ag.gameObject);
                 }
-                catch { /* ignore */ }
-                try { item.Detach(); } catch { /* ignore */ }
+                catch
+                {
+                    /* ignore */
+                }
+
+                try
+                {
+                    item.Detach();
+                }
+                catch
+                {
+                    /* ignore */
+                }
 
                 // 保险：目标槽再清一次，并等到帧尾
                 COOPManager.ChangeWeaponModel(model, null, socket);
@@ -462,10 +571,19 @@ namespace EscapeFromDuckovCoopMod
                         try
                         {
                             var ag2 = item.ActiveAgent;
-                            if (ag2 && ag2.gameObject) UnityEngine.Object.Destroy(ag2.gameObject);
+                            if (ag2 && ag2.gameObject) Object.Destroy(ag2.gameObject);
                         }
-                        catch { }
-                        try { item.Detach(); } catch { }
+                        catch
+                        {
+                        }
+
+                        try
+                        {
+                            item.Detach();
+                        }
+                        catch
+                        {
+                        }
 
                         COOPManager.ChangeWeaponModel(model, null, socket);
                         await UniTask.NextFrame();
@@ -492,18 +610,22 @@ namespace EscapeFromDuckovCoopMod
             writer.Reset();
             writer.Put((byte)Op.AI_TRANSFORM_SNAPSHOT);
             // 统计有效数量
-            int cnt = 0;
-            foreach (var kv in AITool.aiById) if (kv.Value) cnt++;
+            var cnt = 0;
+            foreach (var kv in AITool.aiById)
+                if (kv.Value)
+                    cnt++;
             writer.Put(cnt);
             foreach (var kv in AITool.aiById)
             {
-                var cmc = kv.Value; if (!cmc) continue;
+                var cmc = kv.Value;
+                if (!cmc) continue;
                 var t = cmc.transform;
-                writer.Put(kv.Key);                 // aiId
-                writer.PutV3cm(t.position);         // 压缩位置
-                Vector3 fwd = cmc.characterModel.transform.rotation * Vector3.forward;
+                writer.Put(kv.Key); // aiId
+                writer.PutV3cm(t.position); // 压缩位置
+                var fwd = cmc.characterModel.transform.rotation * Vector3.forward;
                 writer.PutDir(fwd);
             }
+
             CoopTool.BroadcastReliable(writer);
         }
 
@@ -514,12 +636,12 @@ namespace EscapeFromDuckovCoopMod
             var list = new List<(int id, AiAnimState st)>(AITool.aiById.Count);
             foreach (var kv in AITool.aiById)
             {
-                int id = kv.Key;
+                var id = kv.Key;
                 var cmc = kv.Value;
                 if (!cmc) continue;
 
                 // ① 必须是真正的 AI，且存活
-                if (!AITool.IsRealAI(cmc)) continue;      // 你工程里已有这个工具方法
+                if (!AITool.IsRealAI(cmc)) continue; // 你工程里已有这个工具方法
 
                 // ② GameObject/组件必须处于激活状态
                 if (!cmc.gameObject.activeInHierarchy || !cmc.enabled) continue;
@@ -535,30 +657,38 @@ namespace EscapeFromDuckovCoopMod
                     dirY = anim.GetFloat(Animator.StringToHash("MoveDirY")),
                     hand = anim.GetInteger(Animator.StringToHash("HandState")),
                     gunReady = anim.GetBool(Animator.StringToHash("GunReady")),
-                    dashing = anim.GetBool(Animator.StringToHash("Dashing")),
+                    dashing = anim.GetBool(Animator.StringToHash("Dashing"))
                 };
                 list.Add((id, st));
             }
+
             if (list.Count == 0) return;
 
             // —— 发送（保持你原来的分包逻辑）——
             const DeliveryMethod METHOD = DeliveryMethod.Unreliable;
-            int maxSingle = 1200;
-            try { maxSingle = (connectedPeer != null) ? connectedPeer.GetMaxSinglePacketSize(METHOD) : maxSingle; } catch { }
+            var maxSingle = 1200;
+            try
+            {
+                maxSingle = connectedPeer != null ? connectedPeer.GetMaxSinglePacketSize(METHOD) : maxSingle;
+            }
+            catch
+            {
+            }
+
             const int HEADER = 16;
             const int ENTRY = 24;
 
-            int budget = Math.Max(256, maxSingle - HEADER);
-            int perPacket = Math.Max(1, budget / ENTRY);
+            var budget = Math.Max(256, maxSingle - HEADER);
+            var perPacket = Math.Max(1, budget / ENTRY);
 
-            for (int i = 0; i < list.Count; i += perPacket)
+            for (var i = 0; i < list.Count; i += perPacket)
             {
-                int n = Math.Min(perPacket, list.Count - i);
+                var n = Math.Min(perPacket, list.Count - i);
 
                 writer.Reset();
                 writer.Put((byte)Op.AI_ANIM_SNAPSHOT);
                 writer.Put(n);
-                for (int j = 0; j < n; ++j)
+                for (var j = 0; j < n; ++j)
                 {
                     var e = list[i + j];
                     writer.Put(e.id);
@@ -569,46 +699,23 @@ namespace EscapeFromDuckovCoopMod
                     writer.Put(e.st.gunReady);
                     writer.Put(e.st.dashing);
                 }
+
                 netManager.SendToAll(writer, METHOD);
             }
         }
 
         // 客户端：应用增量，不清空，直接补/改
-        public  void HandleAiSeedPatch(NetPacketReader r)
+        public void HandleAiSeedPatch(NetPacketReader r)
         {
-            int n = r.GetInt();
-            for (int i = 0; i < n; i++)
+            var n = r.GetInt();
+            for (var i = 0; i < n; i++)
             {
-                int id = r.GetInt();
-                int seed = r.GetInt();
+                var id = r.GetInt();
+                var seed = r.GetInt();
                 aiRootSeeds[id] = seed;
             }
+
             Debug.Log("[AI-SEED] 应用增量 Root 种子数: " + n);
         }
-
-
-       
-
-        // --- 反编译类的私有序列化字段直达句柄---
-        static readonly AccessTools.FieldRef<CharacterRandomPreset, bool>
-          FR_UsePlayerPreset = AccessTools.FieldRefAccess<CharacterRandomPreset, bool>("usePlayerPreset");
-        static readonly AccessTools.FieldRef<CharacterRandomPreset, CustomFacePreset>
-            FR_FacePreset = AccessTools.FieldRefAccess<CharacterRandomPreset, CustomFacePreset>("facePreset");
-        static readonly AccessTools.FieldRef<CharacterRandomPreset, CharacterModel>
-            FR_CharacterModel = AccessTools.FieldRefAccess<CharacterRandomPreset, CharacterModel>("characterModel");
-
-        // 反射字段（Health 反编译字段）研究了20年研究出来的
-        static readonly System.Reflection.FieldInfo FI_defaultMax =
-            typeof(Health).GetField("defaultMaxHealth", System.Reflection.BindingFlags.NonPublic | System.Reflection.BindingFlags.Instance);
-        static readonly System.Reflection.FieldInfo FI_lastMax =
-            typeof(Health).GetField("lastMaxHealth", System.Reflection.BindingFlags.NonPublic | System.Reflection.BindingFlags.Instance);
-        static readonly System.Reflection.FieldInfo FI__current =
-            typeof(Health).GetField("_currentHealth", System.Reflection.BindingFlags.NonPublic | System.Reflection.BindingFlags.Instance);
-        static readonly System.Reflection.FieldInfo FI_characterCached =
-            typeof(Health).GetField("characterCached", System.Reflection.BindingFlags.NonPublic | System.Reflection.BindingFlags.Instance);
-        static readonly System.Reflection.FieldInfo FI_hasCharacter =
-            typeof(Health).GetField("hasCharacter", System.Reflection.BindingFlags.NonPublic | System.Reflection.BindingFlags.Instance);
     }
-
-   
 }

@@ -17,11 +17,6 @@
 ﻿using ItemStatsSystem;
 using LiteNetLib;
 using LiteNetLib.Utils;
-using System;
-using System.Collections.Generic;
-using System.Linq;
-using System.Text;
-using System.Threading.Tasks;
 using UnityEngine;
 
 namespace EscapeFromDuckovCoopMod
@@ -30,13 +25,14 @@ namespace EscapeFromDuckovCoopMod
     {
         private NetService Service => NetService.Instance;
 
-        
+
         private bool IsServer => Service != null && Service.IsServer;
         private NetManager netManager => Service?.netManager;
         private NetDataWriter writer => Service?.writer;
         private NetPeer connectedPeer => Service?.connectedPeer;
         private PlayerStatus localPlayerStatus => Service?.localPlayerStatus;
         private bool networkStarted => Service != null && Service.networkStarted;
+
         public void SendItemDropRequest(uint token, Item item, Vector3 pos, bool createRb, Vector3 dir, float angle)
         {
             if (netManager == null || IsServer) return;
@@ -45,8 +41,8 @@ namespace EscapeFromDuckovCoopMod
             w.Reset();
             w.Put((byte)Op.ITEM_DROP_REQUEST);
             w.Put(token);
-            NetPack.PutV3cm(w, pos);
-            NetPack.PutDir(w, dir);
+            w.PutV3cm(pos);
+            w.PutDir(dir);
             w.Put(angle);
             w.Put(createRb);
             ItemTool.WriteItemSnapshot(w, item);
@@ -63,8 +59,5 @@ namespace EscapeFromDuckovCoopMod
             w.Put(dropId);
             CoopTool.SendReliable(w);
         }
-
-
-
     }
 }

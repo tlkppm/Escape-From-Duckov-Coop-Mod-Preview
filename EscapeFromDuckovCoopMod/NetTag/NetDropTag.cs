@@ -15,11 +15,6 @@
 // GNU Affero General Public License for more details.
 
 ﻿using ItemStatsSystem;
-using System;
-using System.Collections.Generic;
-using System.Linq;
-using System.Text;
-using System.Threading.Tasks;
 using UnityEngine;
 
 namespace EscapeFromDuckovCoopMod
@@ -29,28 +24,28 @@ namespace EscapeFromDuckovCoopMod
         public uint id;
 
 
-        void Awake()
+        private void Awake()
         {
-          //😆
-            
+            //😆
         }
 
-        static void AddNetDropTag(UnityEngine.GameObject go, uint id)
+        private static void AddNetDropTag(GameObject go, uint id)
         {
             if (!go) return;
             var tag = go.GetComponent<NetDropTag>() ?? go.AddComponent<NetDropTag>();
             tag.id = id;
         }
-        static void AddNetDropTag(Item item, uint id)
+
+        private static void AddNetDropTag(Item item, uint id)
         {
             try
             {
                 var ag = item?.ActiveAgent;
                 if (ag && ag.gameObject) AddNetDropTag(ag.gameObject, id);
             }
-            catch { }
+            catch
+            {
+            }
         }
-
     }
-
 }

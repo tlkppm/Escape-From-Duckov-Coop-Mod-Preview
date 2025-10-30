@@ -14,22 +14,17 @@
 // MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
 // GNU Affero General Public License for more details.
 
-﻿using HarmonyLib;
+﻿using System;
+using HarmonyLib;
 using ItemStatsSystem;
-using System;
-using System.Collections.Generic;
-using System.Linq;
-using System.Text;
-using System.Threading.Tasks;
 using UnityEngine;
-using EscapeFromDuckovCoopMod;
 
 namespace EscapeFromDuckovCoopMod
 {
-    [HarmonyPatch(typeof(ItemExtensions), nameof(ItemExtensions.Drop), new[] { typeof(Item), typeof(Vector3), typeof(bool), typeof(Vector3), typeof(float) })]
+    [HarmonyPatch(typeof(ItemExtensions), nameof(ItemExtensions.Drop), typeof(Item), typeof(Vector3), typeof(bool), typeof(Vector3), typeof(float))]
     public static class Patch_Item_Drop
     {
-        static bool Prefix(Item item, Vector3 pos, bool createRigidbody, Vector3 dropDirection, float randomAngle)
+        private static bool Prefix(Item item, Vector3 pos, bool createRigidbody, Vector3 dropDirection, float randomAngle)
         {
             var mod = ModBehaviourF.Instance;
             if (mod == null || !mod.networkStarted) return true;
@@ -37,15 +32,13 @@ namespace EscapeFromDuckovCoopMod
 
             if (NetSilenceGuards.InPickupItem || NetSilenceGuards.InCapacityShrinkCleanup)
             {
-                UnityEngine.Debug.Log("[ITEM] 静音丢弃：拾取失败/容量清理导致的自动 Drop，不上报主机");
+                Debug.Log("[ITEM] 静音丢弃：拾取失败/容量清理导致的自动 Drop，不上报主机");
                 return true;
             }
 
             if (mod.IsServer)
-            {
                 // 服务器：正常执行，由 Postfix 负责广播（除非来自客户端请求）
                 return true;
-            }
 
             // 客户端：若是"来自主机同步"的生成，放行且不再发请求
             if (COOPManager.ItemHandle._clientSpawnByServerItems.Remove(item))
@@ -53,15 +46,14 @@ namespace EscapeFromDuckovCoopMod
 
 
             // 客户端本地丢：先发送请求，再允许本地正常丢（这样本地背包立即变化）
-            uint token = ++ItemTool.nextLocalDropToken;
+            var token = ++ItemTool.nextLocalDropToken;
             COOPManager.ItemHandle.pendingLocalDropTokens.Add(token);
             COOPManager.ItemHandle.pendingTokenItems[token] = item;
             COOPManager.ItemRequest.SendItemDropRequest(token, item, pos, createRigidbody, dropDirection, randomAngle);
             return true;
-
         }
 
-        static void Postfix(Item item, DuckovItemAgent __result, Vector3 pos, bool createRigidbody, Vector3 dropDirection, float randomAngle)
+        private static void Postfix(Item item, DuckovItemAgent __result, Vector3 pos, bool createRigidbody, Vector3 dropDirection, float randomAngle)
         {
             var mod = ModBehaviourF.Instance;
             if (mod == null || !mod.networkStarted || !mod.IsServer) return;
@@ -73,7 +65,7 @@ namespace EscapeFromDuckovCoopMod
             // 仅在服务器分支
             if (NetSilenceGuards.InPickupItem)
             {
-                UnityEngine.Debug.Log("[SVR] 自动Drop（拾取失败回滚）——不广播SPAWN，避免复制");
+                Debug.Log("[SVR] 自动Drop（拾取失败回滚）——不广播SPAWN，避免复制");
                 return;
             }
 
@@ -83,12 +75,12 @@ namespace EscapeFromDuckovCoopMod
                 var w = mod.writer;
                 w.Reset();
                 w.Put((byte)Op.ITEM_SPAWN);
-                w.Put((uint)0);                     // token=0，表示主机自发
-                uint id = ItemTool.AllocateDropId();
+                w.Put((uint)0); // token=0，表示主机自发
+                var id = ItemTool.AllocateDropId();
                 COOPManager.ItemHandle.serverDroppedItems[id] = item;
                 w.Put(id);
-                NetPack.PutV3cm(w, pos);
-                NetPack.PutDir(w, dropDirection);
+                w.PutV3cm(pos);
+                w.PutDir(dropDirection);
                 w.Put(randomAngle);
                 w.Put(createRigidbody);
                 ItemTool.WriteItemSnapshot(w, item);
@@ -106,24 +98,17 @@ namespace EscapeFromDuckovCoopMod
     public static class Patch_ItemExtensions_Drop_AddNetDropTag
     {
         // 明确锁定到扩展方法 Drop(Item, Vector3, bool, Vector3, float)
-        [HarmonyPatch(typeof(global::ItemExtensions), "Drop",
-            new System.Type[] {
-            typeof(global::ItemStatsSystem.Item),
-            typeof(global::UnityEngine.Vector3),
-            typeof(bool),
-            typeof(global::UnityEngine.Vector3),
-            typeof(float)
-            })]
+        [HarmonyPatch(typeof(ItemExtensions), "Drop", typeof(Item), typeof(Vector3), typeof(bool), typeof(Vector3), typeof(float))]
         [HarmonyPostfix]
         private static void Postfix(
             // 扩展方法的第一个参数（this Item）
-            global::ItemStatsSystem.Item item,
-            global::UnityEngine.Vector3 pos,
+            Item item,
+            Vector3 pos,
             bool createRigidbody,
-            global::UnityEngine.Vector3 dropDirection,
+            Vector3 dropDirection,
             float randomAngle,
             // 返回值必须用 ref 才能拿到
-            ref global::DuckovItemAgent __result)
+            ref DuckovItemAgent __result)
         {
             try
             {
@@ -142,15 +127,10 @@ namespace EscapeFromDuckovCoopMod
                 // 例如：tag.itemTypeId = item?.TypeID ?? 0;
                 // 或者 tag.ownerNetId = ModBehaviour.Instance?.LocalPlayerId ?? 0;
             }
-            catch (System.Exception e)
+            catch (Exception e)
             {
-                global::UnityEngine.Debug.LogError($"[Harmony][Drop.Postfix] Add NetDropTag failed: {e}");
+                Debug.LogError($"[Harmony][Drop.Postfix] Add NetDropTag failed: {e}");
             }
         }
     }
-
-
-
-
-
 }

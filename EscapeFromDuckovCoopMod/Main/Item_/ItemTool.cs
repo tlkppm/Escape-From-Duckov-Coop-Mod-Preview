@@ -14,17 +14,15 @@
 // MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
 // GNU Affero General Public License for more details.
 
-﻿using ItemStatsSystem;
+﻿using System;
+using System.Collections.Generic;
+using Cysharp.Threading.Tasks;
+using ItemStatsSystem;
 using LiteNetLib;
 using LiteNetLib.Utils;
-using System;
-using System.Collections.Generic;
-using System.Linq;
-using System.Text;
-using System.Threading.Tasks;
 using UnityEngine;
 using static EscapeFromDuckovCoopMod.LootNet;
-using static EscapeFromDuckovCoopMod.ModBehaviour;
+using Object = UnityEngine.Object;
 
 namespace EscapeFromDuckovCoopMod
 {
@@ -32,19 +30,20 @@ namespace EscapeFromDuckovCoopMod
     {
         public static uint nextDropId = 1;
 
-        public static uint nextLocalDropToken = 1;                 // 客户端本地 token（用来忽略自己 echo 回来的 SPAWN）
+        public static uint nextLocalDropToken = 1; // 客户端本地 token（用来忽略自己 echo 回来的 SPAWN）
 
         public static readonly Dictionary<uint, Item> serverDroppedItems = COOPManager.ItemHandle.serverDroppedItems; // 主机记录
         public static readonly Dictionary<uint, Item> clientDroppedItems = COOPManager.ItemHandle.clientDroppedItems; // 客户端记录（可用于拾取等后续）
 
-        public static bool _serverApplyingLoot = false;        // 主机：处理客户端请求时抑制 Postfix 二次广播
+        public static bool _serverApplyingLoot; // 主机：处理客户端请求时抑制 Postfix 二次广播
 
-        public static void AddNetDropTag(UnityEngine.GameObject go, uint id)
+        public static void AddNetDropTag(GameObject go, uint id)
         {
             if (!go) return;
             var tag = go.GetComponent<NetDropTag>() ?? go.AddComponent<NetDropTag>();
             tag.id = id;
         }
+
         public static void AddNetDropTag(Item item, uint id)
         {
             try
@@ -52,7 +51,9 @@ namespace EscapeFromDuckovCoopMod
                 var ag = item?.ActiveAgent;
                 if (ag && ag.gameObject) AddNetDropTag(ag.gameObject, id);
             }
-            catch { }
+            catch
+            {
+            }
         }
 
         // 取容器内列表（反射兜底）
@@ -71,26 +72,34 @@ namespace EscapeFromDuckovCoopMod
             try
             {
                 // 统一走“合并 + 放入”，内部会在需要时 Detach
-                return ItemUtilities.AddAndMerge(inv, child, 0);
+                return inv.AddAndMerge(child);
             }
             catch (Exception e)
             {
                 Debug.LogWarning($"[ITEM] Inventory.Add* 失败: {e.Message}");
-                try { child.Detach(); return inv.AddItem(child); } catch { }
+                try
+                {
+                    child.Detach();
+                    return inv.AddItem(child);
+                }
+                catch
+                {
+                }
             }
+
             return false;
         }
 
         public static uint AllocateDropId()
         {
-            uint id = nextDropId++;
+            var id = nextDropId++;
             while (serverDroppedItems.ContainsKey(id))
                 id = nextDropId++;
             return id;
         }
 
-        public static async Cysharp.Threading.Tasks.UniTaskVoid Server_DoSplitAsync(
-         ItemStatsSystem.Inventory inv, int srcPos, int count, int prefer)
+        public static async UniTaskVoid Server_DoSplitAsync(
+            Inventory inv, int srcPos, int count, int prefer)
         {
             _serverApplyingLoot = true;
             try
@@ -103,23 +112,30 @@ namespace EscapeFromDuckovCoopMod
                 if (!newItem) return;
 
                 // 2) 优先按 prefer 落到空格；没有空位才允许合并
-                int dst = prefer;
+                var dst = prefer;
                 if (dst < 0 || inv.GetItemAt(dst)) dst = inv.GetFirstEmptyPosition(srcPos + 1);
-                if (dst < 0) dst = inv.GetFirstEmptyPosition(0);
+                if (dst < 0) dst = inv.GetFirstEmptyPosition();
 
-                bool ok = false;
-                if (dst >= 0) ok = inv.AddAt(newItem, dst);                   // 不合并
-                if (!ok) ok = ItemUtilities.AddAndMerge(inv, newItem, srcPos + 1); // 兜底
+                var ok = false;
+                if (dst >= 0) ok = inv.AddAt(newItem, dst); // 不合并
+                if (!ok) ok = inv.AddAndMerge(newItem, srcPos + 1); // 兜底
 
                 if (!ok)
                 {
-                    try { UnityEngine.Object.Destroy(newItem.gameObject); } catch { }
+                    try
+                    {
+                        Object.Destroy(newItem.gameObject);
+                    }
+                    catch
+                    {
+                    }
+
                     if (srcItem) srcItem.StackCount = srcItem.StackCount + count;
                 }
             }
-            catch (System.Exception ex)
+            catch (Exception ex)
             {
-                UnityEngine.Debug.LogError($"[LOOT][SPLIT] exception: {ex}");
+                Debug.LogError($"[LOOT][SPLIT] exception: {ex}");
             }
             finally
             {
@@ -129,7 +145,7 @@ namespace EscapeFromDuckovCoopMod
         }
 
 
-        public static ItemSnapshot MakeSnapshot(ItemStatsSystem.Item item)
+        public static ItemSnapshot MakeSnapshot(Item item)
         {
             ItemSnapshot s;
             s.typeId = item.TypeID;
@@ -137,21 +153,20 @@ namespace EscapeFromDuckovCoopMod
             s.durability = item.Durability;
             s.durabilityLoss = item.DurabilityLoss;
             s.inspected = item.Inspected;
-            s.slots = new System.Collections.Generic.List<(string, ItemSnapshot)>();
-            s.inventory = new System.Collections.Generic.List<ItemSnapshot>();
+            s.slots = new List<(string, ItemSnapshot)>();
+            s.inventory = new List<ItemSnapshot>();
 
             var slots = item.Slots;
             if (slots != null && slots.list != null)
-            {
                 foreach (var slot in slots.list)
                     if (slot != null && slot.Content != null)
                         s.slots.Add((slot.Key ?? string.Empty, MakeSnapshot(slot.Content)));
-            }
 
             var invItems = TryGetInventoryItems(item.Inventory);
             if (invItems != null)
                 foreach (var child in invItems)
-                    if (child != null) s.inventory.Add(MakeSnapshot(child));
+                    if (child != null)
+                        s.inventory.Add(MakeSnapshot(child));
 
             return s;
         }
@@ -169,8 +184,10 @@ namespace EscapeFromDuckovCoopMod
             var slots = item.Slots;
             if (slots != null && slots.list != null)
             {
-                int filled = 0;
-                foreach (var s in slots.list) if (s != null && s.Content != null) filled++;
+                var filled = 0;
+                foreach (var s in slots.list)
+                    if (s != null && s.Content != null)
+                        filled++;
                 w.Put((ushort)filled);
                 foreach (var s in slots.list)
                 {
@@ -188,8 +205,10 @@ namespace EscapeFromDuckovCoopMod
             var invItems = TryGetInventoryItems(item.Inventory);
             if (invItems != null)
             {
-                var valid = new System.Collections.Generic.List<Item>(invItems.Count);
-                foreach (var c in invItems) if (c != null) valid.Add(c);
+                var valid = new List<Item>(invItems.Count);
+                foreach (var c in invItems)
+                    if (c != null)
+                        valid.Add(c);
 
                 w.Put((ushort)valid.Count);
                 foreach (var child in valid)
@@ -214,18 +233,20 @@ namespace EscapeFromDuckovCoopMod
             s.inventory = new List<ItemSnapshot>();
 
             int slotsCount = r.GetUShort();
-            for (int i = 0; i < slotsCount; i++)
+            for (var i = 0; i < slotsCount; i++)
             {
-                string key = r.GetString();
+                var key = r.GetString();
                 var child = ReadItemSnapshot(r);
                 s.slots.Add((key, child));
             }
+
             int invCount = r.GetUShort();
-            for (int i = 0; i < invCount; i++)
+            for (var i = 0; i < invCount; i++)
             {
                 var child = ReadItemSnapshot(r);
                 s.inventory.Add(child);
             }
+
             return s;
         }
 
@@ -242,6 +263,7 @@ namespace EscapeFromDuckovCoopMod
                 Debug.LogError($"[ITEM] 实例化失败 typeId={s.typeId}, err={e}");
                 return null;
             }
+
             if (item == null) return null;
             ApplySnapshotToItem(item, s);
             return item;
@@ -256,9 +278,16 @@ namespace EscapeFromDuckovCoopMod
                 // 仅可堆叠才设置数量，避免“不可堆叠，无法设置数量”
                 if (item.Stackable)
                 {
-                    int target = s.stack;
+                    var target = s.stack;
                     if (target < 1) target = 1;
-                    try { target = Mathf.Clamp(target, 1, item.MaxStackCount); } catch { }
+                    try
+                    {
+                        target = Mathf.Clamp(target, 1, item.MaxStackCount);
+                    }
+                    catch
+                    {
+                    }
+
                     item.StackCount = target;
                 }
 
@@ -268,40 +297,35 @@ namespace EscapeFromDuckovCoopMod
 
                 // Slots
                 if (s.slots != null && s.slots.Count > 0 && item.Slots != null)
-                {
                     foreach (var (key, childSnap) in s.slots)
                     {
                         if (string.IsNullOrEmpty(key)) continue;
                         var slot = item.Slots.GetSlot(key);
-                        if (slot == null) { Debug.LogWarning($"[ITEM] 找不到槽位 key={key} on {item.DisplayName}"); continue; }
+                        if (slot == null)
+                        {
+                            Debug.LogWarning($"[ITEM] 找不到槽位 key={key} on {item.DisplayName}");
+                            continue;
+                        }
+
                         var child = BuildItemFromSnapshot(childSnap);
                         if (child == null) continue;
                         if (!slot.Plug(child, out _))
                             TryAddToInventory(item.Inventory, child);
                     }
-                }
 
                 // 容器内容
                 if (s.inventory != null && s.inventory.Count > 0)
-                {
                     foreach (var childSnap in s.inventory)
                     {
                         var child = BuildItemFromSnapshot(childSnap);
                         if (child == null) continue;
                         TryAddToInventory(item.Inventory, child);
                     }
-                }
             }
             catch (Exception e)
             {
                 Debug.LogError($"[ITEM] ApplySnapshot 出错: {e}");
             }
         }
-
-
-
-
-
-
     }
 }

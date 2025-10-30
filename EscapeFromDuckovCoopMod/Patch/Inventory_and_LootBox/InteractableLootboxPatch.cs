@@ -14,21 +14,18 @@
 // MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
 // GNU Affero General Public License for more details.
 
-﻿using HarmonyLib;
-using ItemStatsSystem;
-using System;
+﻿using System;
 using System.Collections;
-using System.Collections.Generic;
-using System.Linq;
-using System.Text;
-using System.Threading.Tasks;
+using HarmonyLib;
+using ItemStatsSystem;
+using UnityEngine;
 
 namespace EscapeFromDuckovCoopMod
 {
     [HarmonyPatch(typeof(InteractableLootbox), "StartLoot")]
-    static class Patch_Lootbox_StartLoot_RequestState
+    internal static class Patch_Lootbox_StartLoot_RequestState
     {
-        static void Postfix(InteractableLootbox __instance, ref bool __result)
+        private static void Postfix(InteractableLootbox __instance, ref bool __result)
         {
             if (!__result) return;
 
@@ -38,49 +35,49 @@ namespace EscapeFromDuckovCoopMod
             var inv = __instance ? __instance.Inventory : null;
             if (inv == null) return;
 
-            inv.Loading = true;                 // 先挂起 UI
-            COOPManager.LootNet.Client_RequestLootState(inv);     // 请求快照
-            LootManager.Instance.KickLootTimeout(inv, 1.5f);       // 每次开箱都拉起 1.5s 兜底，避免二次打开卡死
+            inv.Loading = true; // 先挂起 UI
+            COOPManager.LootNet.Client_RequestLootState(inv); // 请求快照
+            LootManager.Instance.KickLootTimeout(inv); // 每次开箱都拉起 1.5s 兜底，避免二次打开卡死
         }
     }
 
 
     [HarmonyPatch(typeof(InteractableLootbox), "OnInteractStop")]
-    static class Patch_Lootbox_OnInteractStop_DisableFogWhenAllInspected
+    internal static class Patch_Lootbox_OnInteractStop_DisableFogWhenAllInspected
     {
-        static void Postfix(InteractableLootbox __instance)
+        private static void Postfix(InteractableLootbox __instance)
         {
             var inv = __instance?.Inventory;
             if (inv == null) return;
 
             // 判断是否全部已检视
-            bool allInspected = true;
-            int last = inv.GetLastItemPosition();
-            for (int i = 0; i <= last; i++)
+            var allInspected = true;
+            var last = inv.GetLastItemPosition();
+            for (var i = 0; i <= last; i++)
             {
                 var it = inv.GetItemAt(i);
-                if (it != null && !it.Inspected) { allInspected = false; break; }
+                if (it != null && !it.Inspected)
+                {
+                    allInspected = false;
+                    break;
+                }
             }
 
-            if (allInspected)
-            {
-                inv.NeedInspection = false;
-            }
-
+            if (allInspected) inv.NeedInspection = false;
         }
     }
 
     [HarmonyPatch(typeof(InteractableLootbox), "get_Inventory")]
-    static class Patch_Lootbox_GetInventory_Safe
+    internal static class Patch_Lootbox_GetInventory_Safe
     {
         // 已存在：异常/空返回时强制创建
-        static System.Exception Finalizer(InteractableLootbox __instance, ref Inventory __result, System.Exception __exception)
+        private static Exception Finalizer(InteractableLootbox __instance, ref Inventory __result, Exception __exception)
         {
             try
             {
                 if (__instance != null && (__exception != null || __result == null))
                 {
-                    var mCreate = AccessTools.Method(typeof(InteractableLootbox), "GetOrCreateInventory", new System.Type[] { typeof(InteractableLootbox) });
+                    var mCreate = AccessTools.Method(typeof(InteractableLootbox), "GetOrCreateInventory", new[] { typeof(InteractableLootbox) });
                     if (mCreate != null)
                     {
                         var inv = (Inventory)mCreate.Invoke(null, new object[] { __instance });
@@ -92,20 +89,23 @@ namespace EscapeFromDuckovCoopMod
                     }
                 }
             }
-            catch { }
+            catch
+            {
+            }
+
             return null;
         }
 
-        static void Postfix(InteractableLootbox __instance, ref Inventory __result)
+        private static void Postfix(InteractableLootbox __instance, ref Inventory __result)
         {
             if (__result != null) return;
 
             // 用 LevelManager.LootBoxInventories 做二次兜底
             try
             {
-                int key = ModBehaviourF.Instance != null
-                          ? LootManager.Instance.ComputeLootKey(__instance.transform)
-                          : __instance.GetHashCode();
+                var key = ModBehaviourF.Instance != null
+                    ? LootManager.Instance.ComputeLootKey(__instance.transform)
+                    : __instance.GetHashCode();
 
                 // 看 InteractableLootbox.Inventories
                 var dict1 = InteractableLootbox.Inventories;
@@ -123,26 +123,34 @@ namespace EscapeFromDuckovCoopMod
                     __result = inv2;
 
                     // 顺便把 InteractableLootbox.Inventories 也对齐一次
-                    try { if (dict1 != null) dict1[key] = inv2; } catch { }
+                    try
+                    {
+                        if (dict1 != null) dict1[key] = inv2;
+                    }
+                    catch
+                    {
+                    }
                 }
             }
-            catch { }
+            catch
+            {
+            }
         }
     }
 
 
     [HarmonyPatch(typeof(InteractableLootbox), "get_Inventory")]
-    static class Patch_Lootbox_GetInventory_Register
+    internal static class Patch_Lootbox_GetInventory_Register
     {
-        static void Postfix(InteractableLootbox __instance, ref ItemStatsSystem.Inventory __result)
+        private static void Postfix(InteractableLootbox __instance, ref Inventory __result)
         {
             try
             {
                 if (!__result) return;
 
-                int key = (ModBehaviourF.Instance != null)
-                          ? LootManager.Instance.ComputeLootKey(__instance.transform)
-                          : __instance.GetHashCode();
+                var key = ModBehaviourF.Instance != null
+                    ? LootManager.Instance.ComputeLootKey(__instance.transform)
+                    : __instance.GetHashCode();
 
                 var dictA = InteractableLootbox.Inventories;
                 if (dictA != null) dictA[key] = __result;
@@ -151,16 +159,18 @@ namespace EscapeFromDuckovCoopMod
                 var dictB = lm != null ? LevelManager.LootBoxInventories : null;
                 if (dictB != null) dictB[key] = __result;
             }
-            catch { }
+            catch
+            {
+            }
         }
     }
 
 
     // 阻断：客户端在“死亡路径”里不要本地创建（避免双生）
     [HarmonyPatch(typeof(InteractableLootbox), "CreateFromItem")]
-    static class Patch_Lootbox_CreateFromItem_BlockClient
+    internal static class Patch_Lootbox_CreateFromItem_BlockClient
     {
-        static bool Prefix()
+        private static bool Prefix()
         {
             var mod = ModBehaviourF.Instance;
             if (mod != null && mod.networkStarted && !mod.IsServer && DeadLootSpawnContext.InOnDead != null)
@@ -171,9 +181,9 @@ namespace EscapeFromDuckovCoopMod
 
     // 广播：服务端在 CreateFromItem 返回实例的这一刻立即广播 spawn + state
     [HarmonyPatch(typeof(InteractableLootbox), "CreateFromItem")]
-    static class Patch_Lootbox_CreateFromItem_DeferredSpawn
+    internal static class Patch_Lootbox_CreateFromItem_DeferredSpawn
     {
-        static void Postfix(InteractableLootbox __result)
+        private static void Postfix(InteractableLootbox __result)
         {
             var mod = ModBehaviourF.Instance;
             var dead = DeadLootSpawnContext.InOnDead;
@@ -183,7 +193,7 @@ namespace EscapeFromDuckovCoopMod
             mod.StartCoroutine(DeferredSpawn(__result, dead));
         }
 
-        static System.Collections.IEnumerator DeferredSpawn(InteractableLootbox box, CharacterMainControl who)
+        private static IEnumerator DeferredSpawn(InteractableLootbox box, CharacterMainControl who)
         {
             yield return null;
             var mod = ModBehaviourF.Instance;
@@ -192,9 +202,9 @@ namespace EscapeFromDuckovCoopMod
     }
 
     [HarmonyPatch(typeof(InteractableLootbox), "CreateFromItem")]
-    static class Patch_Lootbox_CreateFromItem_Register
+    internal static class Patch_Lootbox_CreateFromItem_Register
     {
-        static void Postfix(InteractableLootbox __result)
+        private static void Postfix(InteractableLootbox __result)
         {
             try
             {
@@ -205,30 +215,31 @@ namespace EscapeFromDuckovCoopMod
                 var inv = __result.Inventory;
                 if (!inv) return;
 
-                int key = ModBehaviourF.Instance != null
-                          ? LootManager.Instance.ComputeLootKey(__result.transform)
-                          : __result.GetHashCode(); // 兜底
+                var key = ModBehaviourF.Instance != null
+                    ? LootManager.Instance.ComputeLootKey(__result.transform)
+                    : __result.GetHashCode(); // 兜底
 
                 var dict = InteractableLootbox.Inventories;
                 if (dict != null) dict[key] = inv;
             }
-            catch { }
+            catch
+            {
+            }
         }
     }
 
 
-
     [HarmonyPatch(typeof(InteractableLootbox), "CreateFromItem")]
     [HarmonyPriority(Priority.High)]
-    static class Patch_Lootbox_CreateFromItem_DeferOnServerFromOnDead
+    internal static class Patch_Lootbox_CreateFromItem_DeferOnServerFromOnDead
     {
         // 防止我们在协程里再次调用 CreateFromItem 时又被自己拦截
-        [ThreadStatic] static bool _bypassDefer;
+        [ThreadStatic] private static bool _bypassDefer;
 
-        static bool Prefix(
-            ItemStatsSystem.Item item,
-            UnityEngine.Vector3 position,
-            UnityEngine.Quaternion rotation,
+        private static bool Prefix(
+            Item item,
+            Vector3 position,
+            Quaternion rotation,
             bool moveToMainScene,
             InteractableLootbox prefab,
             bool filterDontDropOnDead,
@@ -250,10 +261,10 @@ namespace EscapeFromDuckovCoopMod
             return false;
         }
 
-        static IEnumerator DeferOneFrame(
-            ItemStatsSystem.Item item,
-            UnityEngine.Vector3 position,
-            UnityEngine.Quaternion rotation,
+        private static IEnumerator DeferOneFrame(
+            Item item,
+            Vector3 position,
+            Quaternion rotation,
             bool moveToMainScene,
             InteractableLootbox prefab,
             bool filterDontDropOnDead,
@@ -281,9 +292,9 @@ namespace EscapeFromDuckovCoopMod
 
 
     [HarmonyPatch(typeof(InteractableLootbox), "StartLoot")]
-    static class Patch_Lootbox_StartLoot_RequestState_AndPrime
+    internal static class Patch_Lootbox_StartLoot_RequestState_AndPrime
     {
-        static void Postfix(InteractableLootbox __instance)
+        private static void Postfix(InteractableLootbox __instance)
         {
             var m = ModBehaviourF.Instance;
             if (m == null || !m.networkStarted || m.IsServer) return;
@@ -291,31 +302,47 @@ namespace EscapeFromDuckovCoopMod
             var inv = __instance ? __instance.Inventory : null;
             if (!inv) return;
 
-            try { inv.Loading = true; } catch { }
+            try
+            {
+                inv.Loading = true;
+            }
+            catch
+            {
+            }
+
             COOPManager.LootNet.Client_RequestLootState(inv);
-            LootManager.Instance.KickLootTimeout(inv, 1.5f);
+            LootManager.Instance.KickLootTimeout(inv);
 
             if (!LootboxDetectUtil.IsPrivateInventory(inv) && LootboxDetectUtil.IsLootboxInventory(inv))
             {
-                bool needInspect = false; try { needInspect = inv.NeedInspection; } catch { }
+                var needInspect = false;
+                try
+                {
+                    needInspect = inv.NeedInspection;
+                }
+                catch
+                {
+                }
+
                 if (!needInspect)
                 {
-                    bool hasUninspected = false;
+                    var hasUninspected = false;
                     try
                     {
-                        foreach (var it in inv) { if (it != null && !it.Inspected) { hasUninspected = true; break; } }
+                        foreach (var it in inv)
+                            if (it != null && !it.Inspected)
+                            {
+                                hasUninspected = true;
+                                break;
+                            }
                     }
-                    catch { }
+                    catch
+                    {
+                    }
+
                     if (hasUninspected) inv.NeedInspection = true;
                 }
             }
         }
     }
-
-
-
-
-
-
-
 }

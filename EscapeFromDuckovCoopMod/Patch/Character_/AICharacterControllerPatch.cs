@@ -15,21 +15,17 @@
 // GNU Affero General Public License for more details.
 
 ﻿using HarmonyLib;
+using NodeCanvas.Framework;
 using NodeCanvas.StateMachines;
-using System;
-using System.Collections.Generic;
-using System.Linq;
-using System.Text;
-using System.Threading.Tasks;
 using UnityEngine;
 using UnityEngine.SceneManagement;
 
 namespace EscapeFromDuckovCoopMod
 {
     [HarmonyPatch(typeof(AICharacterController), "Init")]
-    static class Patch_AI_Init
+    internal static class Patch_AI_Init
     {
-        static void Postfix(AICharacterController __instance, CharacterMainControl _characterMainControl)
+        private static void Postfix(AICharacterController __instance, CharacterMainControl _characterMainControl)
         {
             var mod = ModBehaviourF.Instance;
             if (mod == null || !mod.networkStarted) return;
@@ -51,12 +47,12 @@ namespace EscapeFromDuckovCoopMod
             // 2) 主机端：若还没 aiId，就按 rootId + 序号 分配
             if (tag.aiId == 0)
             {
-                int rootId = 0;
+                var rootId = 0;
                 var root = cmc.GetComponentInParent<CharacterSpawnerRoot>();
-                rootId = (root && root.SpawnerGuid != 0)
+                rootId = root && root.SpawnerGuid != 0
                     ? root.SpawnerGuid
                     : AITool.StableHash(AITool.TransformPath(root ? root.transform : cmc.transform));
-                int serial = AITool.NextAiSerial(rootId);
+                var serial = AITool.NextAiSerial(rootId);
                 tag.aiId = AITool.DeriveSeed(rootId, serial);
             }
 
@@ -67,9 +63,9 @@ namespace EscapeFromDuckovCoopMod
     }
 
     [HarmonyPatch(typeof(AICharacterController), "Update")]
-    static class Patch_AICC_ZeroForceTraceMain
+    internal static class Patch_AICC_ZeroForceTraceMain
     {
-        static void Prefix(AICharacterController __instance)
+        private static void Prefix(AICharacterController __instance)
         {
             var mod = ModBehaviourF.Instance;
             if (mod == null || !mod.networkStarted || !mod.IsServer) return;
@@ -81,9 +77,9 @@ namespace EscapeFromDuckovCoopMod
 
 
     [HarmonyPatch(typeof(FSM), "OnGraphUpdate")]
-    static class Patch_FSM_OnGraphUpdate_MainRedirect
+    internal static class Patch_FSM_OnGraphUpdate_MainRedirect
     {
-        static void Prefix(FSM __instance)
+        private static void Prefix(FSM __instance)
         {
             var mod = ModBehaviourF.Instance;
             if (mod == null || !mod.networkStarted || !mod.IsServer) return;
@@ -92,9 +88,11 @@ namespace EscapeFromDuckovCoopMod
             Component agent = null;
             try
             {
-                agent = (Component)AccessTools.Property(typeof(NodeCanvas.Framework.Graph), "agent").GetValue(__instance, null);
+                agent = (Component)AccessTools.Property(typeof(Graph), "agent").GetValue(__instance, null);
             }
-            catch { }
+            catch
+            {
+            }
 
             if (!agent) return;
 
@@ -109,16 +107,16 @@ namespace EscapeFromDuckovCoopMod
                 NcMainRedirector.Set(best);
         }
 
-        static void Postfix()
+        private static void Postfix()
         {
             // 清理现场，避免影响其它对象
             NcMainRedirector.Clear();
         }
 
-        static CharacterMainControl FindNearestEnemyPlayer(ModBehaviourF mod, CharacterMainControl ai, Scene scene, Vector3 aiPos)
+        private static CharacterMainControl FindNearestEnemyPlayer(ModBehaviourF mod, CharacterMainControl ai, Scene scene, Vector3 aiPos)
         {
             CharacterMainControl best = null;
-            float bestD2 = float.MaxValue;
+            var bestD2 = float.MaxValue;
 
             void Try(CharacterMainControl cmc)
             {
@@ -128,8 +126,12 @@ namespace EscapeFromDuckovCoopMod
                 if (cmc.Team == ai.Team) return;
                 if (!LoaclPlayerManager.Instance.IsAlive(cmc)) return;
 
-                float d2 = (cmc.transform.position - aiPos).sqrMagnitude;
-                if (d2 < bestD2) { bestD2 = d2; best = cmc; }
+                var d2 = (cmc.transform.position - aiPos).sqrMagnitude;
+                if (d2 < bestD2)
+                {
+                    bestD2 = d2;
+                    best = cmc;
+                }
             }
 
             // 主机本地玩家
@@ -138,7 +140,8 @@ namespace EscapeFromDuckovCoopMod
             // 服务器维护的各远端玩家克隆
             foreach (var kv in mod.remoteCharacters)
             {
-                var go = kv.Value; if (!go) continue;
+                var go = kv.Value;
+                if (!go) continue;
                 var cmc = go.GetComponent<CharacterMainControl>() ?? go.GetComponentInChildren<CharacterMainControl>(true);
                 Try(cmc);
             }
@@ -148,9 +151,9 @@ namespace EscapeFromDuckovCoopMod
     }
 
     [HarmonyPatch(typeof(AICharacterController), "Update")]
-    static class Patch_AIC_Update_PickNearestPlayer
+    internal static class Patch_AIC_Update_PickNearestPlayer
     {
-        static void Postfix(AICharacterController __instance)
+        private static void Postfix(AICharacterController __instance)
         {
             var mod = ModBehaviourF.Instance;
 
@@ -160,10 +163,10 @@ namespace EscapeFromDuckovCoopMod
             if (!aiCmc) return;
 
             //商人判断（这就是让商人不主动攻击的真真真真的地方）:)))
-            if (__instance.name == "AIController_Merchant_Myst(Clone)") { return; }
+            if (__instance.name == "AIController_Merchant_Myst(Clone)") return;
 
             CharacterMainControl best = null;
-            float bestD2 = float.MaxValue;
+            var bestD2 = float.MaxValue;
 
             void Consider(CharacterMainControl cmc)
             {
@@ -174,23 +177,32 @@ namespace EscapeFromDuckovCoopMod
                 // 存活判定
                 var h = cmc.Health;
                 if (!h) return;
-                float hp = 1f;
-                try { hp = h.CurrentHealth; } catch { }
+                var hp = 1f;
+                try
+                {
+                    hp = h.CurrentHealth;
+                }
+                catch
+                {
+                }
+
                 if (hp <= 0f) return;
 
                 // 视距/视角
-                Vector3 delta = cmc.transform.position - __instance.transform.position;
-                float dist2 = delta.sqrMagnitude;
-                float maxDist = (__instance.sightDistance > 0f ? __instance.sightDistance : 50f);
+                var delta = cmc.transform.position - __instance.transform.position;
+                var dist2 = delta.sqrMagnitude;
+                var maxDist = __instance.sightDistance > 0f ? __instance.sightDistance : 50f;
                 if (dist2 > maxDist * maxDist) return;
 
                 if (__instance.sightAngle > 1f)
                 {
-                    Vector3 fwd = __instance.transform.forward; fwd.y = 0f;
-                    Vector3 dir = delta; dir.y = 0f;
+                    var fwd = __instance.transform.forward;
+                    fwd.y = 0f;
+                    var dir = delta;
+                    dir.y = 0f;
                     if (dir.sqrMagnitude < 1e-6f) return;
-                    float cos = Vector3.Dot(dir.normalized, fwd.normalized);
-                    float cosThresh = Mathf.Cos(__instance.sightAngle * 0.5f * Mathf.Deg2Rad);
+                    var cos = Vector3.Dot(dir.normalized, fwd.normalized);
+                    var cosThresh = Mathf.Cos(__instance.sightAngle * 0.5f * Mathf.Deg2Rad);
                     if (cos < cosThresh) return;
                 }
 
@@ -206,7 +218,6 @@ namespace EscapeFromDuckovCoopMod
 
             // 2) 所有客户端玩家的镜像（主机表）
             if (mod.remoteCharacters != null)
-            {
                 foreach (var kv in mod.remoteCharacters)
                 {
                     var go = kv.Value;
@@ -214,7 +225,6 @@ namespace EscapeFromDuckovCoopMod
                     var cmc = go.GetComponent<CharacterMainControl>();
                     Consider(cmc);
                 }
-            }
 
             if (best == null) return;
 
@@ -222,14 +232,28 @@ namespace EscapeFromDuckovCoopMod
             var cur = __instance.searchedEnemy;
             if (cur)
             {
-                bool bad = false;
-                try { if (cur.Team == aiCmc.Team) bad = true; } catch { }
-                try { if (cur.health != null && cur.health.CurrentHealth <= 0f) bad = true; } catch { }
+                var bad = false;
+                try
+                {
+                    if (cur.Team == aiCmc.Team) bad = true;
+                }
+                catch
+                {
+                }
+
+                try
+                {
+                    if (cur.health != null && cur.health.CurrentHealth <= 0f) bad = true;
+                }
+                catch
+                {
+                }
+
                 if (cur.gameObject.scene != __instance.gameObject.scene) bad = true;
 
                 if (!bad)
                 {
-                    float curD2 = (cur.transform.position - __instance.transform.position).sqrMagnitude;
+                    var curD2 = (cur.transform.position - __instance.transform.position).sqrMagnitude;
 
                     if (curD2 <= bestD2 * 0.81f) return;
                 }
@@ -239,15 +263,10 @@ namespace EscapeFromDuckovCoopMod
             var dr = best.mainDamageReceiver;
             if (dr)
             {
-                __instance.searchedEnemy = dr;                      // 行为树/FSM普遍用 searchedEnemy
+                __instance.searchedEnemy = dr; // 行为树/FSM普遍用 searchedEnemy
                 __instance.SetTarget(dr.transform);
-                __instance.SetNoticedToTarget(dr);                  // 同步“已注意到”的来源
+                __instance.SetNoticedToTarget(dr); // 同步“已注意到”的来源
             }
         }
     }
-
-
-
-
-
 }

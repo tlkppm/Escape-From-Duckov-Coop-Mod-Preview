@@ -14,17 +14,14 @@
 // MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
 // GNU Affero General Public License for more details.
 
-﻿using Cysharp.Threading.Tasks;
+﻿using System;
+using System.Collections.Generic;
+using System.Linq;
+using Cysharp.Threading.Tasks;
 using Duckov.UI;
 using ItemStatsSystem;
 using LiteNetLib;
 using LiteNetLib.Utils;
-using System;
-using System.Collections;
-using System.Collections.Generic;
-using System.Linq;
-using System.Text;
-using System.Threading.Tasks;
 using UnityEngine;
 using Object = UnityEngine.Object;
 
@@ -32,6 +29,17 @@ namespace EscapeFromDuckovCoopMod
 {
     public static class CoopTool
     {
+        // 客户端：本地 SELF 权威包尚未套用时缓存
+        public static bool _cliSelfHpPending;
+
+        public static float _cliSelfHpMax, _cliSelfHpCur;
+
+        public static readonly Dictionary<string, List<(int weaponTypeId, int buffId)>> _cliPendingProxyBuffs
+            = new Dictionary<string, List<(int, int)>>();
+
+        // 客户端：远端克隆未生成前收到的远端HP缓存
+        public static readonly Dictionary<string, (float max, float cur)> _cliPendingRemoteHp = new Dictionary<string, (float max, float cur)>();
+
         private static NetService Service
         {
             get
@@ -42,6 +50,7 @@ namespace EscapeFromDuckovCoopMod
                     svc = Object.FindObjectOfType<NetService>();
                     if (svc != null) NetService.Instance = svc;
                 }
+
                 return svc;
             }
         }
@@ -56,17 +65,6 @@ namespace EscapeFromDuckovCoopMod
         private static Dictionary<string, GameObject> ClientRemoteCharacters => Service?.clientRemoteCharacters;
         private static int Port => Service != null ? Service.port : 0;
 
-        // 客户端：本地 SELF 权威包尚未套用时缓存
-        public static bool _cliSelfHpPending;
-
-        public static float _cliSelfHpMax, _cliSelfHpCur;
-
-        public static readonly Dictionary<string, System.Collections.Generic.List<(int weaponTypeId, int buffId)>> _cliPendingProxyBuffs
-= new Dictionary<string, System.Collections.Generic.List<(int, int)>>();
-
-        // 客户端：远端克隆未生成前收到的远端HP缓存
-        public static readonly Dictionary<string, (float max, float cur)> _cliPendingRemoteHp = new Dictionary<string, (float max, float cur)>();
-
         public static void Init()
         {
             // 触发 Service 属性的初始化，确保 NetService 已经准备好。
@@ -74,18 +72,26 @@ namespace EscapeFromDuckovCoopMod
         }
 
 
-        public static void SafeKillItemAgent(ItemStatsSystem.Item item)
+        public static void SafeKillItemAgent(Item item)
         {
             if (item == null) return;
             try
             {
                 var ag = item.ActiveAgent;
                 if (ag != null && ag.gameObject != null)
-                    UnityEngine.Object.Destroy(ag.gameObject);
+                    Object.Destroy(ag.gameObject);
             }
-            catch { }
+            catch
+            {
+            }
 
-            try { item.Detach(); } catch { }
+            try
+            {
+                item.Detach();
+            }
+            catch
+            {
+            }
         }
 
         // 只清“目标插槽”，避免每次都清三处带来的频繁销毁/创建
@@ -101,9 +107,7 @@ namespace EscapeFromDuckovCoopMod
             if (socket != HandheldSocketTypes.normalHandheld &&
                 socket != HandheldSocketTypes.meleeWeapon &&
                 socket != HandheldSocketTypes.leftHandSocket)
-            {
                 socket = HandheldSocketTypes.normalHandheld; // 回退
-            }
             return socket;
         }
 
@@ -118,14 +122,13 @@ namespace EscapeFromDuckovCoopMod
             if (!remoteCharacters.TryGetValue(shooterId, out var shooterGo) || !shooterGo) return;
 
             var animCtrl = shooterGo.GetComponent<CharacterAnimationControl_MagicBlend>();
-            if (animCtrl && animCtrl.animator)
-            {
-                animCtrl.OnAttack();
-            }
+            if (animCtrl && animCtrl.animator) animCtrl.OnAttack();
         }
 
         public static bool TryGetProjectilePrefab(int weaponTypeId, out Projectile pfb)
-       => LoaclPlayerManager.Instance._projCacheByWeaponType.TryGetValue(weaponTypeId, out pfb);
+        {
+            return LoaclPlayerManager.Instance._projCacheByWeaponType.TryGetValue(weaponTypeId, out pfb);
+        }
 
 
         public static void BroadcastReliable(NetDataWriter w)
@@ -167,24 +170,21 @@ namespace EscapeFromDuckovCoopMod
 
             var gos = trs
                 .Select(t => t.gameObject)
-                .Where(go => go.name.IndexOf(keyword, System.StringComparison.OrdinalIgnoreCase) >= 0)
+                .Where(go => go.name.IndexOf(keyword, StringComparison.OrdinalIgnoreCase) >= 0)
                 .ToList();
 
             foreach (var i in gos)
-            {
                 try
                 {
                     var map = i.GetComponentInChildren<MapSelectionEntry>();
                     if (map != null)
-                    {
                         if (map.SceneID == SceneID)
-                        {
                             return map;
-                        }
-                    }
                 }
-                catch { continue; }
-            }
+                catch
+                {
+                }
+
             return null;
         }
 
@@ -194,6 +194,7 @@ namespace EscapeFromDuckovCoopMod
             if (n.EndsWith("(Clone)", StringComparison.Ordinal)) n = n.Substring(0, n.Length - "(Clone)".Length);
             return n.Trim();
         }
+
         private static string TypeNameOf(Grenade g)
         {
             return g ? g.GetType().FullName : string.Empty;
@@ -202,18 +203,22 @@ namespace EscapeFromDuckovCoopMod
         public static void CacheGrenadePrefab(int typeId, Grenade prefab)
         {
             if (!prefab) return;
-           COOPManager.GrenadeM.prefabByTypeId[typeId] = prefab;
+            COOPManager.GrenadeM.prefabByTypeId[typeId] = prefab;
         }
 
 
         public static bool TryResolvePrefab(int typeId, string _, string __, out Grenade prefab)
         {
             prefab = null;
-            if (COOPManager.GrenadeM.prefabByTypeId.TryGetValue(typeId, out var p) && p) { prefab = p; return true; }
+            if (COOPManager.GrenadeM.prefabByTypeId.TryGetValue(typeId, out var p) && p)
+            {
+                prefab = p;
+                return true;
+            }
+
             return false;
         }
 
-       
 
         public static CharacterMainControl TryGetRemoteCharacterForPeer(NetPeer peer)
         {
@@ -223,6 +228,7 @@ namespace EscapeFromDuckovCoopMod
                 var cm = remoteObj.GetComponent<CharacterMainControl>().characterModel;
                 if (cm != null) return cm.characterMainControl;
             }
+
             return null;
         }
 
@@ -239,7 +245,7 @@ namespace EscapeFromDuckovCoopMod
         {
             return dr && dr.GetComponentInParent<CharacterMainControl>(true) != null;
         }
-   
+
 
         public static void Client_ApplyPendingSelfIfReady()
         {
@@ -251,9 +257,16 @@ namespace EscapeFromDuckovCoopMod
             var cmc = main.GetComponent<CharacterMainControl>();
             if (!h) return;
 
-            try { h.autoInit = false; } catch { } // 防止本地也被 Init() 回满
+            try
+            {
+                h.autoInit = false;
+            }
+            catch
+            {
+            } // 防止本地也被 Init() 回满
+
             HealthTool.BindHealthToCharacter(h, cmc);
-            HealthM.Instance.ForceSetHealth(h, _cliSelfHpMax, _cliSelfHpCur, ensureBar: true);
+            HealthM.Instance.ForceSetHealth(h, _cliSelfHpMax, _cliSelfHpCur);
 
             // 若现在血量已到 0，补一次死亡事件（只在客户端本地）
             LoaclPlayerManager.Instance.Client_EnsureSelfDeathEvent(h, cmc);
@@ -271,30 +284,36 @@ namespace EscapeFromDuckovCoopMod
 
             if (!h) return;
 
-            try { h.autoInit = false; } catch { }
+            try
+            {
+                h.autoInit = false;
+            }
+            catch
+            {
+            }
+
             HealthTool.BindHealthToCharacter(h, cmc);
 
-            float applyMax = snap.max > 0f ? snap.max : (h.MaxHealth > 0f ? h.MaxHealth : 40f);
-            float applyCur = snap.cur > 0f ? snap.cur : applyMax;
+            var applyMax = snap.max > 0f ? snap.max : h.MaxHealth > 0f ? h.MaxHealth : 40f;
+            var applyCur = snap.cur > 0f ? snap.cur : applyMax;
 
-            HealthM.Instance.ForceSetHealth(h, applyMax, applyCur, ensureBar: true);
+            HealthM.Instance.ForceSetHealth(h, applyMax, applyCur);
             _cliPendingRemoteHp.Remove(playerId);
 
 
             if (_cliPendingProxyBuffs.TryGetValue(playerId, out var pendings) && pendings != null && pendings.Count > 0)
             {
                 if (cmc)
-                {
                     foreach (var (weaponTypeId, buffId) in pendings)
-                    {
                         COOPManager.ResolveBuffAsync(weaponTypeId, buffId)
-                            .ContinueWith(b => { if (b != null && cmc) cmc.AddBuff(b, null, weaponTypeId); })
+                            .ContinueWith(b =>
+                            {
+                                if (b != null && cmc) cmc.AddBuff(b, null, weaponTypeId);
+                            })
                             .Forget();
-                    }
-                }
+
                 _cliPendingProxyBuffs.Remove(playerId);
             }
-
         }
 
         public static List<string> BuildParticipantIds_Server()
@@ -341,10 +360,5 @@ namespace EscapeFromDuckovCoopMod
 
             return list;
         }
-
-
-
-
-
     }
 }

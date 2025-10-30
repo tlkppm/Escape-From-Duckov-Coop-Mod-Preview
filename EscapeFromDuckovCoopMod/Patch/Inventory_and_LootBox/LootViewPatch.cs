@@ -14,28 +14,26 @@
 // MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
 // GNU Affero General Public License for more details.
 
-﻿using Duckov.UI;
+﻿using System;
+using System.Collections;
+using Duckov.UI;
 using HarmonyLib;
 using ItemStatsSystem;
 using ItemStatsSystem.Items;
-using System;
-using System.Collections.Generic;
-using System.Linq;
-using System.Text;
-using System.Threading.Tasks;
+using UnityEngine;
 using UnityEngine.EventSystems;
 
 namespace EscapeFromDuckovCoopMod
 {
     [HarmonyPatch(typeof(LootView), "OnLootTargetItemDoubleClicked")]
     [HarmonyPriority(Priority.First)]
-    static class Patch_LootView_OnLootTargetItemDoubleClicked_EquipDirectly
+    internal static class Patch_LootView_OnLootTargetItemDoubleClicked_EquipDirectly
     {
         // ⚠ 第二个参数类型必须是 Duckov.UI.InventoryEntry（不是 InventoryDisplayEntry）
-        static bool Prefix(LootView __instance, InventoryDisplay display, InventoryEntry entry, PointerEventData data)
+        private static bool Prefix(LootView __instance, InventoryDisplay display, InventoryEntry entry, PointerEventData data)
         {
             var mod = ModBehaviourF.Instance;
-            if (mod == null || !mod.networkStarted || mod.IsServer) return true;   // 主机/单机走原逻辑
+            if (mod == null || !mod.networkStarted || mod.IsServer) return true; // 主机/单机走原逻辑
 
             var item = entry?.Item;
             if (item == null) return false;
@@ -49,7 +47,15 @@ namespace EscapeFromDuckovCoopMod
 
             // 容器中的索引
             int pos;
-            try { pos = lootInv.GetIndex(item); } catch { return true; }
+            try
+            {
+                pos = lootInv.GetIndex(item);
+            }
+            catch
+            {
+                return true;
+            }
+
             if (pos < 0) return true;
 
             // 选择一个可穿戴且为空的槽（武器位优先）
@@ -61,11 +67,11 @@ namespace EscapeFromDuckovCoopMod
             else
                 COOPManager.LootNet.Client_SendLootTakeRequest(lootInv, pos);
 
-            data?.Use();     // 吃掉这次双击
-            return false;    // 阻断原方法，避免回落到“塞背包”
+            data?.Use(); // 吃掉这次双击
+            return false; // 阻断原方法，避免回落到“塞背包”
         }
 
-        static Slot PickEquipSlot(Item item)
+        private static Slot PickEquipSlot(Item item)
         {
             var cmc = CharacterMainControl.Main;
             var charItem = cmc ? cmc.CharacterItem : null;
@@ -73,95 +79,145 @@ namespace EscapeFromDuckovCoopMod
             if (slots == null) return null;
 
             // 武器位优先
-            try { var s = cmc.PrimWeaponSlot(); if (s != null && s.Content == null && s.CanPlug(item)) return s; } catch { }
-            try { var s = cmc.SecWeaponSlot(); if (s != null && s.Content == null && s.CanPlug(item)) return s; } catch { }
-            try { var s = cmc.MeleeWeaponSlot(); if (s != null && s.Content == null && s.CanPlug(item)) return s; } catch { }
+            try
+            {
+                var s = cmc.PrimWeaponSlot();
+                if (s != null && s.Content == null && s.CanPlug(item)) return s;
+            }
+            catch
+            {
+            }
+
+            try
+            {
+                var s = cmc.SecWeaponSlot();
+                if (s != null && s.Content == null && s.CanPlug(item)) return s;
+            }
+            catch
+            {
+            }
+
+            try
+            {
+                var s = cmc.MeleeWeaponSlot();
+                if (s != null && s.Content == null && s.CanPlug(item)) return s;
+            }
+            catch
+            {
+            }
 
             // 其余槽
             foreach (var s in slots)
             {
                 if (s == null || s.Content != null) continue;
-                try { if (s.CanPlug(item)) return s; } catch { }
+                try
+                {
+                    if (s.CanPlug(item)) return s;
+                }
+                catch
+                {
+                }
             }
+
             return null;
         }
     }
 
 
     // 允许 LootView.RegisterEvents 总是执行；只做异常兜底，避免首次打开因 open==false 而错过注册
-    [HarmonyPatch(typeof(Duckov.UI.LootView), "RegisterEvents")]
-    static class Patch_LootView_RegisterEvents_Safe
+    [HarmonyPatch(typeof(LootView), "RegisterEvents")]
+    internal static class Patch_LootView_RegisterEvents_Safe
     {
         // 不要 Prefix 拦截，让原方法总是运行
-        static System.Exception Finalizer(Duckov.UI.LootView __instance, System.Exception __exception)
+        private static Exception Finalizer(LootView __instance, Exception __exception)
         {
             if (__exception != null)
             {
-                UnityEngine.Debug.LogWarning("[LOOT][UI] RegisterEvents threw and was swallowed: " + __exception);
+                Debug.LogWarning("[LOOT][UI] RegisterEvents threw and was swallowed: " + __exception);
                 return null; // 吞掉异常，保持 UI 可用
             }
+
             return null;
         }
     }
 
 
     // 翻页：未打开时直接吞掉
-    [HarmonyPatch(typeof(Duckov.UI.LootView), "OnPreviousPage")]
-    static class Patch_LootView_OnPreviousPage_OnlyWhenOpen
+    [HarmonyPatch(typeof(LootView), "OnPreviousPage")]
+    internal static class Patch_LootView_OnPreviousPage_OnlyWhenOpen
     {
-        static bool Prefix(Duckov.UI.LootView __instance)
+        private static bool Prefix(LootView __instance)
         {
-            bool isOpen = false;
+            var isOpen = false;
             try
             {
                 var tr = Traverse.Create(__instance);
-                try { isOpen = tr.Property<bool>("open").Value; }
-                catch { isOpen = tr.Field<bool>("open").Value; }
+                try
+                {
+                    isOpen = tr.Property<bool>("open").Value;
+                }
+                catch
+                {
+                    isOpen = tr.Field<bool>("open").Value;
+                }
             }
-            catch { }
+            catch
+            {
+            }
+
             return isOpen; // 未打开==false -> 不进原方法
         }
     }
 
-    [HarmonyPatch(typeof(Duckov.UI.LootView), "OnNextPage")]
-    static class Patch_LootView_OnNextPage_OnlyWhenOpen
+    [HarmonyPatch(typeof(LootView), "OnNextPage")]
+    internal static class Patch_LootView_OnNextPage_OnlyWhenOpen
     {
-        static bool Prefix(Duckov.UI.LootView __instance)
+        private static bool Prefix(LootView __instance)
         {
-            bool isOpen = false;
+            var isOpen = false;
             try
             {
                 var tr = Traverse.Create(__instance);
-                try { isOpen = tr.Property<bool>("open").Value; }
-                catch { isOpen = tr.Field<bool>("open").Value; }
+                try
+                {
+                    isOpen = tr.Property<bool>("open").Value;
+                }
+                catch
+                {
+                    isOpen = tr.Field<bool>("open").Value;
+                }
             }
-            catch { }
+            catch
+            {
+            }
+
             return isOpen;
         }
     }
 
-    [HarmonyPatch(typeof(Duckov.UI.LootView), "get_TargetInventory")]
-    static class Patch_LootView_GetTargetInventory_Safe
+    [HarmonyPatch(typeof(LootView), "get_TargetInventory")]
+    internal static class Patch_LootView_GetTargetInventory_Safe
     {
-        static System.Exception Finalizer(Duckov.UI.LootView __instance,
-                                          ref ItemStatsSystem.Inventory __result,
-                                          System.Exception __exception)
+        private static Exception Finalizer(LootView __instance,
+            ref Inventory __result,
+            Exception __exception)
         {
             if (__exception != null)
             {
-                __result = null;     // 直接当“未就绪/无容器”处理
-                return null;         // 吞掉异常
+                __result = null; // 直接当“未就绪/无容器”处理
+                return null; // 吞掉异常
             }
+
             return null;
         }
     }
 
     // 让“是否需要搜索”对所有公共容器生效（世界箱 + 尸体箱等）可能的修复:)
-    [HarmonyPatch(typeof(Duckov.UI.LootView), nameof(Duckov.UI.LootView.HasInventoryEverBeenLooted))]
-    static class Patch_LootView_HasInventoryEverBeenLooted_NeedAware_AllLoot
+    [HarmonyPatch(typeof(LootView), nameof(LootView.HasInventoryEverBeenLooted))]
+    internal static class Patch_LootView_HasInventoryEverBeenLooted_NeedAware_AllLoot
     {
         [HarmonyPriority(Priority.First)]
-        static bool Prefix(ref bool __result, ItemStatsSystem.Inventory inventory)
+        private static bool Prefix(ref bool __result, Inventory inventory)
         {
             if (!inventory) return true;
 
@@ -169,22 +225,29 @@ namespace EscapeFromDuckovCoopMod
 
             if (!LootboxDetectUtil.IsLootboxInventory(inventory)) return true;
 
-            bool needInspect = false;
-            try { needInspect = inventory.NeedInspection; } catch { }
+            var needInspect = false;
+            try
+            {
+                needInspect = inventory.NeedInspection;
+            }
+            catch
+            {
+            }
 
             if (needInspect)
             {
-                __result = false;   // 视为“未搜过” → UI 走搜索条/迷雾
+                __result = false; // 视为“未搜过” → UI 走搜索条/迷雾
                 return false;
             }
+
             return true;
         }
     }
 
-    [HarmonyPatch(typeof(global::Duckov.UI.LootView), "OnStartLoot")]
-    static class Patch_LootView_OnStartLoot_PrimeSearchGate_Robust
+    [HarmonyPatch(typeof(LootView), "OnStartLoot")]
+    internal static class Patch_LootView_OnStartLoot_PrimeSearchGate_Robust
     {
-        static void Postfix(global::Duckov.UI.LootView __instance, global::InteractableLootbox lootbox)
+        private static void Postfix(LootView __instance, InteractableLootbox lootbox)
         {
             var mod = ModBehaviourF.Instance;
             if (mod == null || !mod.networkStarted || mod.IsServer) return;
@@ -197,13 +260,18 @@ namespace EscapeFromDuckovCoopMod
             if (inv.hasBeenInspectedInLootBox) return;
 
             {
-                int last = inv.GetLastItemPosition();
-                bool allInspectedNow = true;
-                for (int i = 0; i <= last; i++)
+                var last = inv.GetLastItemPosition();
+                var allInspectedNow = true;
+                for (var i = 0; i <= last; i++)
                 {
                     var it = inv.GetItemAt(i);
-                    if (it != null && !it.Inspected) { allInspectedNow = false; break; }
+                    if (it != null && !it.Inspected)
+                    {
+                        allInspectedNow = false;
+                        break;
+                    }
                 }
+
                 if (allInspectedNow) return;
             }
 
@@ -213,50 +281,61 @@ namespace EscapeFromDuckovCoopMod
             mod.StartCoroutine(KickSearchGateOnceStable(inv, lootbox));
         }
 
-        static System.Collections.IEnumerator KickSearchGateOnceStable(
-            global::ItemStatsSystem.Inventory inv,
-            global::InteractableLootbox lootbox)
+        private static IEnumerator KickSearchGateOnceStable(
+            Inventory inv,
+            InteractableLootbox lootbox)
         {
             yield return null;
             yield return null;
 
             if (!inv) yield break;
 
-            int last = inv.GetLastItemPosition();
-            bool allInspected = true;
-            for (int i = 0; i <= last; i++)
+            var last = inv.GetLastItemPosition();
+            var allInspected = true;
+            for (var i = 0; i <= last; i++)
             {
                 var it = inv.GetItemAt(i);
-                if (it != null && !it.Inspected) { allInspected = false; break; }
+                if (it != null && !it.Inspected)
+                {
+                    allInspected = false;
+                    break;
+                }
             }
 
             TrySetNeedInspection(inv, !allInspected);
             TrySetLootboxNeedInspect(lootbox, !allInspected);
         }
 
-        static void TrySetNeedInspection(global::ItemStatsSystem.Inventory inv, bool v)
+        private static void TrySetNeedInspection(Inventory inv, bool v)
         {
-            try { inv.NeedInspection = v; } catch { }
+            try
+            {
+                inv.NeedInspection = v;
+            }
+            catch
+            {
+            }
         }
 
-        static void TrySetLootboxNeedInspect(global::InteractableLootbox box, bool v)
+        private static void TrySetLootboxNeedInspect(InteractableLootbox box, bool v)
         {
             if (box == null) return;
             try
             {
                 var t = box.GetType();
-                var f = HarmonyLib.AccessTools.Field(t, "needInspect");
-                if (f != null) { f.SetValue(box, v); return; }
-                var p = HarmonyLib.AccessTools.Property(t, "needInspect");
-                if (p != null && p.CanWrite) { p.SetValue(box, v, null); return; }
+                var f = AccessTools.Field(t, "needInspect");
+                if (f != null)
+                {
+                    f.SetValue(box, v);
+                    return;
+                }
+
+                var p = AccessTools.Property(t, "needInspect");
+                if (p != null && p.CanWrite) p.SetValue(box, v, null);
             }
-            catch { }
+            catch
+            {
+            }
         }
     }
-
-
-
-
-
-
 }

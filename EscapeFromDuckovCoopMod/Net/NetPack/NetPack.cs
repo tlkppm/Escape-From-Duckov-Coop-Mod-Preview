@@ -16,11 +16,6 @@
 
 ﻿using LiteNetLib;
 using LiteNetLib.Utils;
-using System;
-using System.Collections.Generic;
-using System.Linq;
-using System.Text;
-using System.Threading.Tasks;
 using UnityEngine;
 
 namespace EscapeFromDuckovCoopMod
@@ -28,8 +23,7 @@ namespace EscapeFromDuckovCoopMod
     // 量化工具
     public static class NetPack
     {
-
-        const float POS_SCALE = 100f;
+        private const float POS_SCALE = 100f;
 
         public static void PutV3cm(this NetDataWriter w, Vector3 v)
         {
@@ -37,9 +31,10 @@ namespace EscapeFromDuckovCoopMod
             w.Put((int)Mathf.Round(v.y * POS_SCALE));
             w.Put((int)Mathf.Round(v.z * POS_SCALE));
         }
+
         public static Vector3 GetV3cm(this NetPacketReader r)
         {
-            float inv = 1f / POS_SCALE;
+            var inv = 1f / POS_SCALE;
             return new Vector3(r.GetInt() * inv, r.GetInt() * inv, r.GetInt() * inv);
         }
 
@@ -49,24 +44,25 @@ namespace EscapeFromDuckovCoopMod
         {
             if (dir.sqrMagnitude < 1e-8f) dir = Vector3.forward;
             dir.Normalize();
-            float pitch = Mathf.Asin(Mathf.Clamp(dir.y, -1f, 1f)) * Mathf.Rad2Deg; // -90..90
-            float yaw = Mathf.Atan2(dir.x, dir.z) * Mathf.Rad2Deg;                 // -180..180
+            var pitch = Mathf.Asin(Mathf.Clamp(dir.y, -1f, 1f)) * Mathf.Rad2Deg; // -90..90
+            var yaw = Mathf.Atan2(dir.x, dir.z) * Mathf.Rad2Deg; // -180..180
             if (yaw < 0) yaw += 360f;
 
-            ushort qYaw = (ushort)Mathf.Clamp(Mathf.RoundToInt(yaw / 360f * 65535f), 0, 65535);
-            ushort qPitch = (ushort)Mathf.Clamp(Mathf.RoundToInt((pitch + 90f) / 180f * 65535f), 0, 65535);
+            var qYaw = (ushort)Mathf.Clamp(Mathf.RoundToInt(yaw / 360f * 65535f), 0, 65535);
+            var qPitch = (ushort)Mathf.Clamp(Mathf.RoundToInt((pitch + 90f) / 180f * 65535f), 0, 65535);
             w.Put(qYaw);
             w.Put(qPitch);
         }
+
         public static Vector3 GetDir(this NetPacketReader r)
         {
-            float yaw = r.GetUShort() / 65535f * 360f;          // 0..360
-            float pitch = (r.GetUShort() / 65535f) * 180f - 90f;  // -90..90
-            float cy = Mathf.Cos(yaw * Mathf.Deg2Rad);
-            float sy = Mathf.Sin(yaw * Mathf.Deg2Rad);
-            float cp = Mathf.Cos(pitch * Mathf.Deg2Rad);
-            float sp = Mathf.Sin(pitch * Mathf.Deg2Rad);
-            Vector3 d = new Vector3(sy * cp, sp, cy * cp);
+            var yaw = r.GetUShort() / 65535f * 360f; // 0..360
+            var pitch = r.GetUShort() / 65535f * 180f - 90f; // -90..90
+            var cy = Mathf.Cos(yaw * Mathf.Deg2Rad);
+            var sy = Mathf.Sin(yaw * Mathf.Deg2Rad);
+            var cp = Mathf.Cos(pitch * Mathf.Deg2Rad);
+            var sp = Mathf.Sin(pitch * Mathf.Deg2Rad);
+            var d = new Vector3(sy * cp, sp, cy * cp);
             if (d.sqrMagnitude < 1e-8f) d = Vector3.forward;
             return d;
         }
@@ -74,18 +70,19 @@ namespace EscapeFromDuckovCoopMod
         // 小范围浮点压缩（可用于 MoveDir/速度等），范围 [-8,8]，分辨率 1/16 可能的sans自己算
         public static void PutSNorm16(this NetDataWriter w, float v)
         {
-            int q = Mathf.RoundToInt(Mathf.Clamp(v, -8f, 8f) * 16f);
+            var q = Mathf.RoundToInt(Mathf.Clamp(v, -8f, 8f) * 16f);
             w.Put((sbyte)Mathf.Clamp(q, sbyte.MinValue, sbyte.MaxValue));
         }
+
         public static float GetSNorm16(this NetPacketReader r)
         {
             return r.GetSByte() / 16f;
         }
 
         public static void PutDamagePayload(this NetDataWriter w,
-    float damageValue, float armorPiercing, float critDmgFactor, float critRate, int crit,
-    Vector3 damagePoint, Vector3 damageNormal, int fromWeaponItemID, float bleedChance, bool isExplosion,
-    float attackRange)
+            float damageValue, float armorPiercing, float critDmgFactor, float critRate, int crit,
+            Vector3 damagePoint, Vector3 damageNormal, int fromWeaponItemID, float bleedChance, bool isExplosion,
+            float attackRange)
         {
             w.Put(damageValue);
             w.Put(armorPiercing);
@@ -103,24 +100,18 @@ namespace EscapeFromDuckovCoopMod
         public static (float dmg, float ap, float cdf, float cr, int crit, Vector3 point, Vector3 normal, int wid, float bleed, bool boom, float range)
             GetDamagePayload(this NetPacketReader r)
         {
-            float dmg = r.GetFloat();
-            float ap = r.GetFloat();
-            float cdf = r.GetFloat();
-            float cr = r.GetFloat();
-            int crit = r.GetInt();
-            Vector3 p = r.GetV3cm();
-            Vector3 n = r.GetDir();
-            int wid = r.GetInt();
-            float bleed = r.GetFloat();
-            bool boom = r.GetBool();
-            float rng = r.GetFloat();
+            var dmg = r.GetFloat();
+            var ap = r.GetFloat();
+            var cdf = r.GetFloat();
+            var cr = r.GetFloat();
+            var crit = r.GetInt();
+            var p = r.GetV3cm();
+            var n = r.GetDir();
+            var wid = r.GetInt();
+            var bleed = r.GetFloat();
+            var boom = r.GetBool();
+            var rng = r.GetFloat();
             return (dmg, ap, cdf, cr, crit, p, n, wid, bleed, boom, rng);
         }
-
     }
-
-
-
-
-
 }

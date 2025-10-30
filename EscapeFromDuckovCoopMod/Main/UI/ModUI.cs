@@ -14,22 +14,31 @@
 // MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
 // GNU Affero General Public License for more details.
 
-﻿using LiteNetLib;
+﻿using System.Collections.Generic;
+using LiteNetLib;
 using LiteNetLib.Utils;
-using System;
-using System.Collections.Generic;
-using System.Linq;
-using System.Text;
-using System.Threading.Tasks;
-using Unity.VisualScripting;
 using UnityEngine;
-using static Animancer.Easing;
 
 namespace EscapeFromDuckovCoopMod
 {
-    public class ModUI:MonoBehaviour
+    public class ModUI : MonoBehaviour
     {
         public static ModUI Instance;
+
+        public bool showUI = true;
+        public bool showPlayerStatusWindow;
+        public KeyCode toggleWindowKey = KeyCode.P;
+
+        private readonly List<string> _hostList = new List<string>();
+        private readonly HashSet<string> _hostSet = new HashSet<string>();
+        public readonly KeyCode readyKey = KeyCode.J;
+        private string _manualIP = "127.0.0.1";
+        private string _manualPort = "9050";
+        private int _port = 9050;
+        private string _status = "未连接";
+        private Rect mainWindowRect = new Rect(10, 10, 400, 700);
+        private Vector2 playerStatusScrollPos = Vector2.zero;
+        private Rect playerStatusWindowRect = new Rect(420, 10, 300, 400);
 
         private NetService Service => NetService.Instance;
         private bool IsServer => Service != null && Service.IsServer;
@@ -38,6 +47,7 @@ namespace EscapeFromDuckovCoopMod
         private NetPeer connectedPeer => Service?.connectedPeer;
         private PlayerStatus localPlayerStatus => Service?.localPlayerStatus;
         private bool networkStarted => Service != null && Service.networkStarted;
+
         private string manualIP
         {
             get => Service?.manualIP ?? _manualIP;
@@ -47,6 +57,7 @@ namespace EscapeFromDuckovCoopMod
                 if (Service != null) Service.manualIP = value;
             }
         }
+
         private string manualPort
         {
             get => Service?.manualPort ?? _manualPort;
@@ -56,6 +67,7 @@ namespace EscapeFromDuckovCoopMod
                 if (Service != null) Service.manualPort = value;
             }
         }
+
         private string status
         {
             get => Service?.status ?? _status;
@@ -65,64 +77,29 @@ namespace EscapeFromDuckovCoopMod
                 if (Service != null) Service.status = value;
             }
         }
+
         private int port => Service?.port ?? _port;
 
         private List<string> hostList => Service?.hostList ?? _hostList;
         private HashSet<string> hostSet => Service?.hostSet ?? _hostSet;
-
-        private readonly List<string> _hostList = new List<string>();
-        private readonly HashSet<string> _hostSet = new HashSet<string>();
-        private string _manualIP = "127.0.0.1";
-        private string _manualPort = "9050";
-        private string _status = "未连接";
-        private int _port = 9050;
 
         private Dictionary<NetPeer, GameObject> remoteCharacters => Service?.remoteCharacters;
         private Dictionary<NetPeer, PlayerStatus> playerStatuses => Service?.playerStatuses;
         private Dictionary<string, GameObject> clientRemoteCharacters => Service?.clientRemoteCharacters;
         private Dictionary<string, PlayerStatus> clientPlayerStatuses => Service?.clientPlayerStatuses;
 
-        public bool showUI = true;
-        private Rect mainWindowRect = new Rect(10, 10, 400, 700);
-        private Rect playerStatusWindowRect = new Rect(420, 10, 300, 400);
-        public bool showPlayerStatusWindow = false;
-        private Vector2 playerStatusScrollPos = Vector2.zero;
-        public KeyCode toggleWindowKey = KeyCode.P;
-        public readonly KeyCode readyKey = KeyCode.J;
-
-
-        public void Init()
-        {
-            Instance = this;
-            var svc = Service;
-            if (svc != null)
-            {
-                _manualIP = svc.manualIP;
-                _manualPort = svc.manualPort;
-                _status = svc.status;
-                _port = svc.port;
-                _hostList.Clear();
-                _hostSet.Clear();
-                _hostList.AddRange(svc.hostList);
-                foreach (var host in svc.hostSet) _hostSet.Add(host);
-            }
-        }
-
-        void OnGUI()
+        private void OnGUI()
         {
             if (showUI)
             {
                 mainWindowRect = GUI.Window(94120, mainWindowRect, DrawMainWindow, "联机Mod控制面板");
 
-                if (showPlayerStatusWindow)
-                {
-                    playerStatusWindowRect = GUI.Window(94121, playerStatusWindowRect, DrawPlayerStatusWindow, "玩家状态");
-                }
+                if (showPlayerStatusWindow) playerStatusWindowRect = GUI.Window(94121, playerStatusWindowRect, DrawPlayerStatusWindow, "玩家状态");
             }
 
             if (SceneNet.Instance.sceneVoteActive)
             {
-                float h = 220f;
+                var h = 220f;
                 var area = new Rect(10, Screen.height * 0.5f - h * 0.5f, 320, h);
                 GUILayout.BeginArea(area, GUI.skin.box);
                 GUILayout.Label($"地图投票 / 准备  [{SceneInfoCollection.GetSceneInfo(SceneNet.Instance.sceneTargetId).DisplayName}]");
@@ -132,9 +109,11 @@ namespace EscapeFromDuckovCoopMod
                 GUILayout.Label("玩家准备状态：");
                 foreach (var pid in SceneNet.Instance.sceneParticipantIds)
                 {
-                    bool r = false; SceneNet.Instance.sceneReady.TryGetValue(pid, out r);
+                    var r = false;
+                    SceneNet.Instance.sceneReady.TryGetValue(pid, out r);
                     GUILayout.Label($"• {pid}  —— {(r ? "✅ 就绪" : "⌛ 未就绪")}");
                 }
+
                 GUILayout.EndArea();
             }
 
@@ -153,13 +132,31 @@ namespace EscapeFromDuckovCoopMod
                     // var cmc = (_spectateIdx >= 0 && _spectateIdx < _spectateList.Count) ? _spectateList[_spectateIdx] : null;
                     // who = cmc ? (cmc.name ?? "队友") : "队友";
                 }
-                catch { }
+                catch
+                {
+                }
 
                 GUI.Label(new Rect(0, Screen.height - 40, Screen.width, 30),
-                    $"观战模式：左键 ▶ 下一个 | 右键 ◀ 上一个  | 正在观战", style);
+                    "观战模式：左键 ▶ 下一个 | 右键 ◀ 上一个  | 正在观战", style);
             }
+        }
 
 
+        public void Init()
+        {
+            Instance = this;
+            var svc = Service;
+            if (svc != null)
+            {
+                _manualIP = svc.manualIP;
+                _manualPort = svc.manualPort;
+                _status = svc.status;
+                _port = svc.port;
+                _hostList.Clear();
+                _hostSet.Clear();
+                _hostList.AddRange(svc.hostList);
+                foreach (var host in svc.hostSet) _hostSet.Add(host);
+            }
         }
 
         private void DrawMainWindow(int windowID)
@@ -180,31 +177,25 @@ namespace EscapeFromDuckovCoopMod
                 GUILayout.Label("🔍 局域网主机列表");
 
                 if (hostList.Count == 0)
-                {
                     GUILayout.Label("（等待广播回应，暂无主机）");
-                }
                 else
-                {
                     foreach (var host in hostList)
                     {
                         GUILayout.BeginHorizontal();
                         if (GUILayout.Button("连接", GUILayout.Width(60)))
                         {
                             var parts = host.Split(':');
-                            if (parts.Length == 2 && int.TryParse(parts[1], out int p))
+                            if (parts.Length == 2 && int.TryParse(parts[1], out var p))
                             {
-                                if (netManager == null || !netManager.IsRunning || IsServer || !networkStarted)
-                                {
-                                    NetService.Instance.StartNetwork(false);
-                                }
+                                if (netManager == null || !netManager.IsRunning || IsServer || !networkStarted) NetService.Instance.StartNetwork(false);
 
                                 NetService.Instance.ConnectToHost(parts[0], p);
                             }
                         }
+
                         GUILayout.Label(host);
                         GUILayout.EndHorizontal();
                     }
-                }
 
                 GUILayout.Space(20);
                 GUILayout.Label("手动输入 IP 和端口连接:");
@@ -218,12 +209,9 @@ namespace EscapeFromDuckovCoopMod
                 GUILayout.EndHorizontal();
                 if (GUILayout.Button("手动连接"))
                 {
-                    if (int.TryParse(manualPort, out int p))
+                    if (int.TryParse(manualPort, out var p))
                     {
-                        if (netManager == null || !netManager.IsRunning || IsServer || !networkStarted)
-                        {
-                            NetService.Instance.StartNetwork(false);
-                        }
+                        if (netManager == null || !netManager.IsRunning || IsServer || !networkStarted) NetService.Instance.StartNetwork(false);
 
                         NetService.Instance.ConnectToHost(manualIP, p);
                     }
@@ -246,20 +234,14 @@ namespace EscapeFromDuckovCoopMod
             showPlayerStatusWindow = GUILayout.Toggle(showPlayerStatusWindow, $"显示玩家状态窗口 (切换键: {toggleWindowKey})");
 
             if (GUILayout.Button("[Debug] 打印出该地图的所有lootbox"))
-            {
                 foreach (var i in LevelManager.LootBoxInventories)
-                {
                     try
                     {
                         Debug.Log($"Name {i.Value.name}" + $" DisplayNameKey {i.Value.DisplayNameKey}" + $" Key {i.Key}");
                     }
                     catch
                     {
-                        continue;
                     }
-                }
-
-            }
             //if (GUILayout.Button("[Debug] 所有maplist"))
             //{
             //    const string keyword = "MapSelectionEntry";
@@ -293,13 +275,9 @@ namespace EscapeFromDuckovCoopMod
         }
 
 
-
         private void DrawPlayerStatusWindow(int windowID)
         {
-            if (GUI.Button(new Rect(playerStatusWindowRect.width - 25, 5, 20, 20), "×"))
-            {
-                showPlayerStatusWindow = false;
-            }
+            if (GUI.Button(new Rect(playerStatusWindowRect.width - 25, 5, 20, 20), "×")) showPlayerStatusWindow = false;
 
             playerStatusScrollPos = GUILayout.BeginScrollView(playerStatusScrollPos, GUILayout.ExpandWidth(true));
 
@@ -317,7 +295,6 @@ namespace EscapeFromDuckovCoopMod
             }
 
             if (IsServer)
-            {
                 foreach (var kvp in playerStatuses)
                 {
                     var st = kvp.Value;
@@ -331,9 +308,7 @@ namespace EscapeFromDuckovCoopMod
                     GUILayout.EndHorizontal();
                     GUILayout.Space(10);
                 }
-            }
             else
-            {
                 foreach (var kvp in clientPlayerStatuses)
                 {
                     var st = kvp.Value;
@@ -347,14 +322,9 @@ namespace EscapeFromDuckovCoopMod
                     GUILayout.EndHorizontal();
                     GUILayout.Space(10);
                 }
-            }
 
             GUILayout.EndScrollView();
             GUI.DragWindow();
         }
-
-
-
-
     }
 }

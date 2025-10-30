@@ -14,11 +14,8 @@
 // MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
 // GNU Affero General Public License for more details.
 
-﻿using System;
-using System.Collections.Generic;
-using System.Linq;
+﻿using System.Collections.Generic;
 using System.Text;
-using System.Threading.Tasks;
 using UnityEngine;
 
 namespace EscapeFromDuckovCoopMod
@@ -28,18 +25,22 @@ namespace EscapeFromDuckovCoopMod
     {
         public uint id;
 
-        void Awake()
+        private void Awake()
         {
             id = ComputeStableId(gameObject);
         }
 
         public static uint ComputeStableId(GameObject go)
         {
-            int sceneIndex = go.scene.buildIndex;
+            var sceneIndex = go.scene.buildIndex;
 
             var t = go.transform;
-            var stack = new System.Collections.Generic.Stack<Transform>();
-            while (t != null) { stack.Push(t); t = t.parent; }
+            var stack = new Stack<Transform>();
+            while (t != null)
+            {
+                stack.Push(t);
+                t = t.parent;
+            }
 
             var sb = new StringBuilder(256);
             while (stack.Count > 0)
@@ -49,22 +50,23 @@ namespace EscapeFromDuckovCoopMod
             }
 
             var p = go.transform.position;
-            int px = Mathf.RoundToInt(p.x * 100f);
-            int py = Mathf.RoundToInt(p.y * 100f);
-            int pz = Mathf.RoundToInt(p.z * 100f);
+            var px = Mathf.RoundToInt(p.x * 100f);
+            var py = Mathf.RoundToInt(p.y * 100f);
+            var pz = Mathf.RoundToInt(p.z * 100f);
 
-            string key = $"{sceneIndex}:{sb}:{px},{py},{pz}";
+            var key = $"{sceneIndex}:{sb}:{px},{py},{pz}";
 
             // FNV1a-32 可能有用 by:InitLoader 
             unchecked
             {
-                uint hash = 2166136261;
-                for (int i = 0; i < key.Length; i++)
+                var hash = 2166136261;
+                for (var i = 0; i < key.Length; i++)
                 {
                     hash ^= key[i];
                     hash *= 16777619;
                 }
-                return hash == 0 ? 1u : hash; 
+
+                return hash == 0 ? 1u : hash;
             }
         }
     }

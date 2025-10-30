@@ -16,18 +16,16 @@
 
 ﻿using System;
 using System.Collections.Generic;
-using System.Linq;
-using System.Text;
-using System.Threading.Tasks;
 using UnityEngine;
+using Object = UnityEngine.Object;
 
 namespace EscapeFromDuckovCoopMod
 {
     public static class CustomFace
     {
-        private static NetService Service => NetService.Instance;
         // 客户端：远端玩家待应用的外观缓存
         public static readonly Dictionary<string, string> _cliPendingFace = new Dictionary<string, string>();
+        private static NetService Service => NetService.Instance;
 
         //补充外观
         public static void Client_ApplyFaceIfAvailable(string playerId, GameObject instance, string faceOverride = null)
@@ -35,7 +33,7 @@ namespace EscapeFromDuckovCoopMod
             try
             {
                 // 先挑一个 JSON
-                string face = faceOverride;
+                var face = faceOverride;
                 if (string.IsNullOrEmpty(face))
                 {
                     if (_cliPendingFace.TryGetValue(playerId, out var pf) && !string.IsNullOrEmpty(pf))
@@ -69,26 +67,49 @@ namespace EscapeFromDuckovCoopMod
         public static void HardApplyCustomFace(CustomFaceInstance cf, in CustomFaceSettingData data)
         {
             if (cf == null) return;
-            try { StripAllCustomFaceParts(cf.gameObject); } catch { }
-            try { cf.LoadFromData(data); } catch { }
-            try { cf.RefreshAll(); } catch { }
+            try
+            {
+                StripAllCustomFaceParts(cf.gameObject);
+            }
+            catch
+            {
+            }
+
+            try
+            {
+                cf.LoadFromData(data);
+            }
+            catch
+            {
+            }
+
+            try
+            {
+                cf.RefreshAll();
+            }
+            catch
+            {
+            }
         }
 
         public static void StripAllCustomFaceParts(GameObject root)
         {
             try
             {
-                var all = root.GetComponentsInChildren<global::CustomFacePart>(true);
-                int n = 0;
+                var all = root.GetComponentsInChildren<CustomFacePart>(true);
+                var n = 0;
                 foreach (var p in all)
                 {
                     if (!p) continue;
                     n++;
-                    UnityEngine.Object.Destroy(p.gameObject);
+                    Object.Destroy(p.gameObject);
                 }
+
                 Debug.Log($"[COOP][FACE] stripped {n} CustomFacePart");
             }
-            catch { }
+            catch
+            {
+            }
         }
 
         public static string LoadLocalCustomFaceJson()
@@ -100,18 +121,17 @@ namespace EscapeFromDuckovCoopMod
                 // 1) 尝试：LevelManager 的保存数据（struct，无需判 null）
                 var lm = LevelManager.Instance;
                 if (lm != null && lm.CustomFaceManager != null)
-                {
                     try
                     {
                         var data1 = lm.CustomFaceManager.LoadMainCharacterSetting(); // struct
                         json = JsonUtility.ToJson(data1);
                     }
-                    catch { }
-                }
+                    catch
+                    {
+                    }
 
                 // 2) 兜底：从运行时模型抓当前脸（ConvertToSaveData）
                 if (string.IsNullOrEmpty(json) || json == "{}")
-                {
                     try
                     {
                         var main = CharacterMainControl.Main;
@@ -125,15 +145,16 @@ namespace EscapeFromDuckovCoopMod
                                 json = j2;
                         }
                     }
-                    catch { }
-                }
+                    catch
+                    {
+                    }
 
                 // 3) 记住最近一次非空
                 if (!string.IsNullOrEmpty(json) && json != "{}")
                     LoaclPlayerManager.Instance._lastGoodFaceJson = json;
 
                 // 4) 返回永不为空（尽量用缓存兜底）
-                return (!string.IsNullOrEmpty(json) && json != "{}") ? json : (LoaclPlayerManager.Instance._lastGoodFaceJson ?? "");
+                return !string.IsNullOrEmpty(json) && json != "{}" ? json : LoaclPlayerManager.Instance._lastGoodFaceJson ?? "";
             }
             catch
             {
@@ -148,12 +169,14 @@ namespace EscapeFromDuckovCoopMod
             try
             {
                 CustomFaceSettingData data;
-                bool ok = CustomFaceSettingData.JsonToData(faceJson, out data);
+                var ok = CustomFaceSettingData.JsonToData(faceJson, out data);
                 if (!ok) data = JsonUtility.FromJson<CustomFaceSettingData>(faceJson);
                 model.SetFaceFromData(data);
             }
-            catch { /* 忽略异常避免中断 */ }
+            catch
+            {
+                /* 忽略异常避免中断 */
+            }
         }
-
     }
 }

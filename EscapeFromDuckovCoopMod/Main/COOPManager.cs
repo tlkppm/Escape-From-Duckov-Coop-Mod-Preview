@@ -14,27 +14,19 @@
 // MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
 // GNU Affero General Public License for more details.
 
-﻿using Cysharp.Threading.Tasks;
+﻿using System;
+using System.Threading.Tasks;
+using Cysharp.Threading.Tasks;
 using Duckov.Buffs;
 using HarmonyLib;
 using ItemStatsSystem;
-using ItemStatsSystem.Items;
-using System;
-using System.Collections.Generic;
-using System.Linq;
-using System.Text;
-using System.Threading.Tasks;
-using Unity.VisualScripting;
 using UnityEngine;
-using UnityEngine.Assertions.Must;
-using EscapeFromDuckovCoopMod;
+using Object = UnityEngine.Object;
 
 namespace EscapeFromDuckovCoopMod
 {
     public class COOPManager
     {
-        private NetService Service => NetService.Instance;
-
         public static HostPlayer_Apply HostPlayer_Apply;
 
         public static ClientPlayer_Apply ClientPlayer_Apply;
@@ -54,6 +46,7 @@ namespace EscapeFromDuckovCoopMod
         public static WeaponRequest WeaponRequest;
         public static Host_Handle Host_Handle;
         public static ItemRequest ItemRequest;
+        private NetService Service => NetService.Instance;
 
         public static void InitManager()
         {
@@ -61,7 +54,7 @@ namespace EscapeFromDuckovCoopMod
             ClientPlayer_Apply = new ClientPlayer_Apply();
             LootNet = new LootNet();
             AIHandle = new AIHandle();
-            Door =  new Door_();
+            Door = new Door_();
             destructible = new Destructible();
             GrenadeM = new GrenadeM();
             HurtM = new HurtM();
@@ -74,15 +67,8 @@ namespace EscapeFromDuckovCoopMod
             Buff = new Buff_();
             WeaponRequest = new WeaponRequest();
             Host_Handle = new Host_Handle();
-            ItemRequest = new ItemRequest(); 
+            ItemRequest = new ItemRequest();
         }
-
-
-
-
-
-
-
 
 
         public static async Task<Item> GetItemAsync(int itemId)
@@ -93,33 +79,32 @@ namespace EscapeFromDuckovCoopMod
 
         public static void ChangeArmorModel(CharacterModel characterModel, Item item)
         {
-            if(item != null)
+            if (item != null)
             {
-                Slot slot = characterModel.characterMainControl.CharacterItem.Slots["Armor"];
+                var slot = characterModel.characterMainControl.CharacterItem.Slots["Armor"];
                 Traverse.Create(slot).Field<Item>("content").Value = item;
             }
 
             if (item == null)
             {
-                Transform socket = characterModel.ArmorSocket;
-                for (int i = socket.childCount - 1; i >= 0; i--)
-                {
-                    UnityEngine.Object.Destroy(socket.GetChild(i).gameObject);
-                }
+                var socket = characterModel.ArmorSocket;
+                for (var i = socket.childCount - 1; i >= 0; i--) Object.Destroy(socket.GetChild(i).gameObject);
                 return;
             }
-            global::UnityEngine.Transform faceMaskSocket = characterModel.ArmorSocket;
-            global::ItemStatsSystem.ItemAgent itemAgent = item.AgentUtilities.CreateAgent(global::CharacterEquipmentController.equipmentModelHash, global::ItemStatsSystem.ItemAgent.AgentTypes.equipment);
+
+            var faceMaskSocket = characterModel.ArmorSocket;
+            var itemAgent = item.AgentUtilities.CreateAgent(CharacterEquipmentController.equipmentModelHash, ItemAgent.AgentTypes.equipment);
             if (itemAgent == null)
             {
-                global::UnityEngine.Debug.LogError("生成的装备Item没有装备agent，Item名称：" + item.gameObject.name);
+                Debug.LogError("生成的装备Item没有装备agent，Item名称：" + item.gameObject.name);
                 return;
             }
+
             if (itemAgent != null)
             {
                 itemAgent.transform.SetParent(faceMaskSocket, false);
-                itemAgent.transform.localRotation = global::UnityEngine.Quaternion.identity;
-                itemAgent.transform.localPosition = global::UnityEngine.Vector3.zero;
+                itemAgent.transform.localRotation = Quaternion.identity;
+                itemAgent.transform.localPosition = Vector3.zero;
             }
         }
 
@@ -128,70 +113,69 @@ namespace EscapeFromDuckovCoopMod
         {
             if (item != null)
             {
-                Slot slot = characterModel.characterMainControl.CharacterItem.Slots["Helmat"];
+                var slot = characterModel.characterMainControl.CharacterItem.Slots["Helmat"];
                 Traverse.Create(slot).Field<Item>("content").Value = item;
             }
-                     
+
             if (item == null)
             {
-                Transform socket = characterModel.HelmatSocket;
-                for (int i = socket.childCount - 1; i >= 0; i--)
-                {
-                    UnityEngine.Object.Destroy(socket.GetChild(i).gameObject);
-                }
+                var socket = characterModel.HelmatSocket;
+                for (var i = socket.childCount - 1; i >= 0; i--) Object.Destroy(socket.GetChild(i).gameObject);
                 characterModel.CustomFace.hairSocket.gameObject.SetActive(true);
                 characterModel.CustomFace.mouthPart.socket.gameObject.SetActive(true);
                 return;
             }
+
             characterModel.CustomFace.hairSocket.gameObject.SetActive(false);
             characterModel.CustomFace.mouthPart.socket.gameObject.SetActive(false);
-            global::UnityEngine.Transform faceMaskSocket = characterModel.HelmatSocket;
-            global::ItemStatsSystem.ItemAgent itemAgent = item.AgentUtilities.CreateAgent(global::CharacterEquipmentController.equipmentModelHash, global::ItemStatsSystem.ItemAgent.AgentTypes.equipment);
+            var faceMaskSocket = characterModel.HelmatSocket;
+            var itemAgent = item.AgentUtilities.CreateAgent(CharacterEquipmentController.equipmentModelHash, ItemAgent.AgentTypes.equipment);
             if (itemAgent == null)
             {
-                global::UnityEngine.Debug.LogError("生成的装备Item没有装备agent，Item名称：" + item.gameObject.name);
+                Debug.LogError("生成的装备Item没有装备agent，Item名称：" + item.gameObject.name);
                 return;
             }
+
             if (itemAgent != null)
             {
                 itemAgent.transform.SetParent(faceMaskSocket, false);
-                itemAgent.transform.localRotation = global::UnityEngine.Quaternion.identity;
-                itemAgent.transform.localPosition = global::UnityEngine.Vector3.zero;
+                itemAgent.transform.localRotation = Quaternion.identity;
+                itemAgent.transform.localPosition = Vector3.zero;
             }
         }
+
         public static void ChangeHeadsetModel(CharacterModel characterModel, Item item)
         {
-            if(item != null)
+            if (item != null)
             {
-                Slot slot = characterModel.characterMainControl.CharacterItem.Slots["Headset"];
+                var slot = characterModel.characterMainControl.CharacterItem.Slots["Headset"];
                 Traverse.Create(slot).Field<Item>("content").Value = item;
             }
-              
+
             if (item == null)
             {
-                Transform socket = characterModel.HelmatSocket;
-                for (int i = socket.childCount - 1; i >= 0; i--)
-                {
-                    UnityEngine.Object.Destroy(socket.GetChild(i).gameObject);
-                }
+                var socket = characterModel.HelmatSocket;
+                for (var i = socket.childCount - 1; i >= 0; i--) Object.Destroy(socket.GetChild(i).gameObject);
                 characterModel.CustomFace.hairSocket.gameObject.SetActive(true);
                 characterModel.CustomFace.mouthPart.socket.gameObject.SetActive(true);
                 return;
             }
+
             characterModel.CustomFace.hairSocket.gameObject.SetActive(false);
             characterModel.CustomFace.mouthPart.socket.gameObject.SetActive(false);
-            global::UnityEngine.Transform faceMaskSocket = characterModel.HelmatSocket;
-            global::ItemStatsSystem.ItemAgent itemAgent = item.AgentUtilities.CreateAgent(global::CharacterEquipmentController.equipmentModelHash, global::ItemStatsSystem.ItemAgent.AgentTypes.equipment);
+            var faceMaskSocket = characterModel.HelmatSocket;
+            var itemAgent = item.AgentUtilities.CreateAgent(CharacterEquipmentController.equipmentModelHash, ItemAgent.AgentTypes.equipment);
             if (itemAgent == null)
             {
-                global::UnityEngine.Debug.LogError("生成的装备Item没有装备agent，Item名称：" + item.gameObject.name);
+                Debug.LogError("生成的装备Item没有装备agent，Item名称：" + item.gameObject.name);
                 return;
             }
+
             if (itemAgent != null)
             {
                 itemAgent.transform.SetParent(faceMaskSocket, false);
-                itemAgent.transform.localRotation = global::UnityEngine.Quaternion.identity;
-                itemAgent.transform.localPosition = global::UnityEngine.Vector3.zero;
+                itemAgent.transform.localRotation = Quaternion.identity;
+                itemAgent.transform.localPosition = Vector3.zero;
             }
         }
 
@@ -199,64 +183,62 @@ namespace EscapeFromDuckovCoopMod
         {
             if (item != null)
             {
-                Slot slot = characterModel.characterMainControl.CharacterItem.Slots["Backpack"];
+                var slot = characterModel.characterMainControl.CharacterItem.Slots["Backpack"];
                 Traverse.Create(slot).Field<Item>("content").Value = item;
-            }         
-       
+            }
+
             if (item == null)
             {
-                Transform socket = characterModel.BackpackSocket;
-                for (int i = socket.childCount - 1; i >= 0; i--)
-                {
-                    UnityEngine.Object.Destroy(socket.GetChild(i).gameObject);
-                }
+                var socket = characterModel.BackpackSocket;
+                for (var i = socket.childCount - 1; i >= 0; i--) Object.Destroy(socket.GetChild(i).gameObject);
                 return;
             }
-            global::UnityEngine.Transform faceMaskSocket = characterModel.BackpackSocket;
-            global::ItemStatsSystem.ItemAgent itemAgent = item.AgentUtilities.CreateAgent(global::CharacterEquipmentController.equipmentModelHash, global::ItemStatsSystem.ItemAgent.AgentTypes.equipment);
+
+            var faceMaskSocket = characterModel.BackpackSocket;
+            var itemAgent = item.AgentUtilities.CreateAgent(CharacterEquipmentController.equipmentModelHash, ItemAgent.AgentTypes.equipment);
             if (itemAgent == null)
             {
-                global::UnityEngine.Debug.LogError("生成的装备Item没有装备agent，Item名称：" + item.gameObject.name);
+                Debug.LogError("生成的装备Item没有装备agent，Item名称：" + item.gameObject.name);
                 return;
             }
+
             if (itemAgent != null)
             {
                 itemAgent.transform.SetParent(faceMaskSocket, false);
-                itemAgent.transform.localRotation = global::UnityEngine.Quaternion.identity;
-                itemAgent.transform.localPosition = global::UnityEngine.Vector3.zero;
+                itemAgent.transform.localRotation = Quaternion.identity;
+                itemAgent.transform.localPosition = Vector3.zero;
             }
         }
 
 
         public static void ChangeFaceMaskModel(CharacterModel characterModel, Item item)
         {
-            if(item != null)
+            if (item != null)
             {
-                Slot slot = characterModel.characterMainControl.CharacterItem.Slots["FaceMask"];
+                var slot = characterModel.characterMainControl.CharacterItem.Slots["FaceMask"];
                 Traverse.Create(slot).Field<Item>("content").Value = item;
             }
-                     
+
             if (item == null)
             {
-                Transform socket = characterModel.FaceMaskSocket;
-                for (int i = socket.childCount - 1; i >= 0; i--)
-                {
-                    UnityEngine.Object.Destroy(socket.GetChild(i).gameObject);
-                }
+                var socket = characterModel.FaceMaskSocket;
+                for (var i = socket.childCount - 1; i >= 0; i--) Object.Destroy(socket.GetChild(i).gameObject);
                 return;
             }
-            global::UnityEngine.Transform faceMaskSocket = characterModel.FaceMaskSocket;
-            global::ItemStatsSystem.ItemAgent itemAgent = item.AgentUtilities.CreateAgent(global::CharacterEquipmentController.equipmentModelHash, global::ItemStatsSystem.ItemAgent.AgentTypes.equipment);
+
+            var faceMaskSocket = characterModel.FaceMaskSocket;
+            var itemAgent = item.AgentUtilities.CreateAgent(CharacterEquipmentController.equipmentModelHash, ItemAgent.AgentTypes.equipment);
             if (itemAgent == null)
             {
-                global::UnityEngine.Debug.LogError("生成的装备Item没有装备agent，Item名称：" + item.gameObject.name);
+                Debug.LogError("生成的装备Item没有装备agent，Item名称：" + item.gameObject.name);
                 return;
             }
+
             if (itemAgent != null)
             {
                 itemAgent.transform.SetParent(faceMaskSocket, false);
-                itemAgent.transform.localRotation = global::UnityEngine.Quaternion.identity;
-                itemAgent.transform.localPosition = global::UnityEngine.Vector3.zero;
+                itemAgent.transform.localRotation = Quaternion.identity;
+                itemAgent.transform.localPosition = Vector3.zero;
             }
         }
 
@@ -334,7 +316,7 @@ namespace EscapeFromDuckovCoopMod
             finally
             {
                 if (item != null && item.gameObject)
-                    UnityEngine.Object.Destroy(item.gameObject);
+                    Object.Destroy(item.gameObject);
             }
         }
 
@@ -358,7 +340,6 @@ namespace EscapeFromDuckovCoopMod
         {
             // 1) 从武器里拿（最稳，因为不同 id 可能共用/复用）
             if (weaponTypeId > 0)
-            {
                 try
                 {
                     var item = await ItemAssetsCollection.InstantiateAsync(weaponTypeId);
@@ -366,18 +347,20 @@ namespace EscapeFromDuckovCoopMod
                     var prefab = gunAgent?.GunItemSetting?.buff;
                     if (prefab != null) return prefab;
                 }
-                catch { }
-            }
+                catch
+                {
+                }
 
             // 2) 兜底：在已加载的 Buff 资源里按 id 匹配（适用于手雷/技能以外的通用 Buff）
             try
             {
                 foreach (var b in Resources.FindObjectsOfTypeAll<Buff>())
-                {
-                    if (b && b.ID == buffId) return b;
-                }
+                    if (b && b.ID == buffId)
+                        return b;
             }
-            catch { }
+            catch
+            {
+            }
 
             return null;
         }
@@ -396,17 +379,24 @@ namespace EscapeFromDuckovCoopMod
             if (item == null) return;
 
             ItemAgent itemAgent = null;
-            try { itemAgent = item.ActiveAgent; } catch { }
+            try
+            {
+                itemAgent = item.ActiveAgent;
+            }
+            catch
+            {
+            }
 
             if (itemAgent == null)
-            {
-                try { itemAgent = item.CreateHandheldAgent(); }
+                try
+                {
+                    itemAgent = item.CreateHandheldAgent();
+                }
                 catch (Exception e)
                 {
                     Debug.Log($"[COOP] CreateHandheldAgent 失败：{e.Message}");
                     return;
                 }
-            }
 
             if (itemAgent == null) return;
 
@@ -475,34 +465,34 @@ namespace EscapeFromDuckovCoopMod
         //	characterModel.characterMainControl.ChangeHoldItem(item);
         //}
 
-        static Transform ResolveHandheldSocket(CharacterModel model, HandheldSocketTypes socket)
+        private static Transform ResolveHandheldSocket(CharacterModel model, HandheldSocketTypes socket)
         {
             switch (socket)
             {
                 case HandheldSocketTypes.meleeWeapon:
                     return model.MeleeWeaponSocket ? model.MeleeWeaponSocket
-                         : (model.RightHandSocket ? model.RightHandSocket : model.LefthandSocket);
+                        : model.RightHandSocket ? model.RightHandSocket : model.LefthandSocket;
                 case HandheldSocketTypes.leftHandSocket:
                     return model.LefthandSocket ? model.LefthandSocket
-                         : (model.RightHandSocket ? model.RightHandSocket : model.MeleeWeaponSocket);
+                        : model.RightHandSocket ? model.RightHandSocket : model.MeleeWeaponSocket;
                 case HandheldSocketTypes.normalHandheld:
                 default:
                     return model.RightHandSocket ? model.RightHandSocket
-                         : (model.MeleeWeaponSocket ? model.MeleeWeaponSocket : model.LefthandSocket);
+                        : model.MeleeWeaponSocket ? model.MeleeWeaponSocket : model.LefthandSocket;
             }
         }
 
-        static void ClearChildren(Transform t)
+        private static void ClearChildren(Transform t)
         {
             if (!t) return;
-            for (int i = t.childCount - 1; i >= 0; --i)
+            for (var i = t.childCount - 1; i >= 0; --i)
             {
                 var c = t.GetChild(i);
-                if (c) UnityEngine.Object.Destroy(c.gameObject);
+                if (c) Object.Destroy(c.gameObject);
             }
         }
 
-        static Animator ResolveRemoteAnimator(GameObject remoteObj)
+        private static Animator ResolveRemoteAnimator(GameObject remoteObj)
         {
             var cmc = remoteObj.GetComponent<CharacterMainControl>();
             if (cmc == null || cmc.characterModel == null) return null;
@@ -530,38 +520,51 @@ namespace EscapeFromDuckovCoopMod
                 try
                 {
                     foreach (var g in root.GetComponentsInChildren<ItemAgent_Gun>(true))
-                        if (g && g.gameObject) UnityEngine.Object.Destroy(g.gameObject);
+                        if (g && g.gameObject)
+                            Object.Destroy(g.gameObject);
 
                     foreach (var m in root.GetComponentsInChildren<ItemAgent_MeleeWeapon>(true))
-                        if (m && m.gameObject) UnityEngine.Object.Destroy(m.gameObject);
+                        if (m && m.gameObject)
+                            Object.Destroy(m.gameObject);
 
                     foreach (var x in root.GetComponentsInChildren<DuckovItemAgent>(true))
-                        if (x && x.gameObject) UnityEngine.Object.Destroy(x.gameObject);
+                        if (x && x.gameObject)
+                            Object.Destroy(x.gameObject);
 
                     var baseType = typeof(Component).Assembly.GetType("ItemAgent");
                     if (baseType != null)
-                    {
                         foreach (var c in root.GetComponentsInChildren(baseType, true))
-                            if (c is Component comp && comp.gameObject) UnityEngine.Object.Destroy(comp.gameObject);
-                    }
+                            if (c is Component comp && comp.gameObject)
+                                Object.Destroy(comp.gameObject);
                 }
-                catch { }
+                catch
+                {
+                }
             }
 
-            try { KillChildren(model.RightHandSocket); } catch { }
-            try { KillChildren(model.LefthandSocket); } catch { }
-            try { KillChildren(model.MeleeWeaponSocket); } catch { }
+            try
+            {
+                KillChildren(model.RightHandSocket);
+            }
+            catch
+            {
+            }
 
+            try
+            {
+                KillChildren(model.LefthandSocket);
+            }
+            catch
+            {
+            }
+
+            try
+            {
+                KillChildren(model.MeleeWeaponSocket);
+            }
+            catch
+            {
+            }
         }
-
-
-
-
-
-
-
     }
-
 }
-
-

@@ -14,20 +14,22 @@
 // MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
 // GNU Affero General Public License for more details.
 
-﻿using Cysharp.Threading.Tasks;
+﻿using System;
+using System.Collections.Generic;
+using Cysharp.Threading.Tasks;
+using Duckov.Utilities;
 using LiteNetLib;
 using LiteNetLib.Utils;
-using System;
-using System.Collections.Generic;
-using System.Linq;
-using System.Text;
-using System.Threading.Tasks;
 using UnityEngine;
 
 namespace EscapeFromDuckovCoopMod
 {
     public class ClientPlayer_Apply
     {
+        private const float WeaponApplyDebounce = 0.20f; // 200ms 去抖窗口
+
+        private readonly Dictionary<string, string> _lastWeaponAppliedByPlayer = new Dictionary<string, string>();
+        private readonly Dictionary<string, float> _lastWeaponAppliedTimeByPlayer = new Dictionary<string, float>();
         private NetService Service => NetService.Instance;
 
         private bool IsServer => Service != null && Service.IsServer;
@@ -39,13 +41,6 @@ namespace EscapeFromDuckovCoopMod
         private Dictionary<NetPeer, GameObject> remoteCharacters => Service?.remoteCharacters;
         private Dictionary<NetPeer, PlayerStatus> playerStatuses => Service?.playerStatuses;
         private Dictionary<string, GameObject> clientRemoteCharacters => Service?.clientRemoteCharacters;
-        private const float WeaponApplyDebounce = 0.20f; // 200ms 去抖窗口
-
-        private readonly Dictionary<string, string> _lastWeaponAppliedByPlayer = new Dictionary<string, string>();
-        private readonly Dictionary<string, float> _lastWeaponAppliedTimeByPlayer = new Dictionary<string, float>();
-
-
-
 
 
         public async UniTask ApplyEquipmentUpdate_Client(string playerId, int slotHash, string itemId)
@@ -67,41 +62,39 @@ namespace EscapeFromDuckovCoopMod
             }
 
             string slotName = null;
-            if (slotHash == CharacterEquipmentController.armorHash) slotName = "armorSlot";
-            else if (slotHash == CharacterEquipmentController.helmatHash) slotName = "helmatSlot";
-            else if (slotHash == CharacterEquipmentController.faceMaskHash) slotName = "faceMaskSlot";
-            else if (slotHash == CharacterEquipmentController.backpackHash) slotName = "backpackSlot";
-            else if (slotHash == CharacterEquipmentController.headsetHash) slotName = "headsetSlot";
+            if (slotHash == CharacterEquipmentController.armorHash)
+            {
+                slotName = "armorSlot";
+            }
+            else if (slotHash == CharacterEquipmentController.helmatHash)
+            {
+                slotName = "helmatSlot";
+            }
+            else if (slotHash == CharacterEquipmentController.faceMaskHash)
+            {
+                slotName = "faceMaskSlot";
+            }
+            else if (slotHash == CharacterEquipmentController.backpackHash)
+            {
+                slotName = "backpackSlot";
+            }
+            else if (slotHash == CharacterEquipmentController.headsetHash)
+            {
+                slotName = "headsetSlot";
+            }
             else
             {
                 if (!string.IsNullOrEmpty(itemId) && int.TryParse(itemId, out var ids))
                 {
                     var item = await COOPManager.GetItemAsync(ids);
-                    if (item == null)
-                    {
-                        Debug.LogWarning($"无法获取物品: ItemId={itemId}，槽位 {slotHash} 未更新");
-                    }
-                    if (slotHash == 100)
-                    {
-                        COOPManager.ChangeArmorModel(characterModel, item);
-                    }
-                    if (slotHash == 200)
-                    {
-                        COOPManager.ChangeHelmatModel(characterModel, item);
-                    }
-                    if (slotHash == 300)
-                    {
-                        COOPManager.ChangeFaceMaskModel(characterModel, item);
-                    }
-                    if (slotHash == 400)
-                    {
-                        COOPManager.ChangeBackpackModel(characterModel, item);
-                    }
-                    if (slotHash == 500)
-                    {
-                        COOPManager.ChangeHeadsetModel(characterModel, item);
-                    }
+                    if (item == null) Debug.LogWarning($"无法获取物品: ItemId={itemId}，槽位 {slotHash} 未更新");
+                    if (slotHash == 100) COOPManager.ChangeArmorModel(characterModel, item);
+                    if (slotHash == 200) COOPManager.ChangeHelmatModel(characterModel, item);
+                    if (slotHash == 300) COOPManager.ChangeFaceMaskModel(characterModel, item);
+                    if (slotHash == 400) COOPManager.ChangeBackpackModel(characterModel, item);
+                    if (slotHash == 500) COOPManager.ChangeHeadsetModel(characterModel, item);
                 }
+
                 return;
             }
 
@@ -136,17 +129,12 @@ namespace EscapeFromDuckovCoopMod
             var model = cm ? cm.characterModel : null;
             if (model == null) return;
 
-            string key = $"{playerId}:{slotHash}";
-            string want = itemId ?? string.Empty;
-            if (_lastWeaponAppliedByPlayer.TryGetValue(key, out var last) && last == want)
-            {
-                return;
-            }
+            var key = $"{playerId}:{slotHash}";
+            var want = itemId ?? string.Empty;
+            if (_lastWeaponAppliedByPlayer.TryGetValue(key, out var last) && last == want) return;
             if (_lastWeaponAppliedTimeByPlayer.TryGetValue(key, out var ts))
-            {
                 if (Time.time - ts < WeaponApplyDebounce && last == want)
                     return;
-            }
             _lastWeaponAppliedByPlayer[key] = want;
             _lastWeaponAppliedTimeByPlayer[key] = Time.time;
 
@@ -167,9 +155,9 @@ namespace EscapeFromDuckovCoopMod
                         COOPManager.ChangeWeaponModel(model, item, socket);
 
                         var gunSetting = item.GetComponent<ItemSetting_Gun>();
-                        var pfb = (gunSetting && gunSetting.bulletPfb)
-                                ? gunSetting.bulletPfb
-                                : Duckov.Utilities.GameplayDataSettings.Prefabs.DefaultBullet;
+                        var pfb = gunSetting && gunSetting.bulletPfb
+                            ? gunSetting.bulletPfb
+                            : GameplayDataSettings.Prefabs.DefaultBullet;
                         LoaclPlayerManager.Instance._projCacheByWeaponType[typeId] = pfb;
                         LoaclPlayerManager.Instance._muzzleFxCacheByWeaponType[typeId] = gunSetting ? gunSetting.muzzleFxPfb : null;
                     }
@@ -184,18 +172,5 @@ namespace EscapeFromDuckovCoopMod
                 Debug.LogError($"更新武器失败(客户端): {playerId}, Slot={socket}, ItemId={itemId}, 错误: {ex.Message}");
             }
         }
-
-
-     
-
-
-
-
-
-
-
-
-
     }
-
 }

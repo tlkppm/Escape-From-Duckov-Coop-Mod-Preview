@@ -14,13 +14,7 @@
 // MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
 // GNU Affero General Public License for more details.
 
-﻿using System;
-using System.Collections.Generic;
-using System.Linq;
-using System.Text;
-using System.Threading.Tasks;
-
-namespace EscapeFromDuckovCoopMod
+﻿namespace EscapeFromDuckovCoopMod
 {
     internal static class HoldVisualBinder
     {
@@ -48,7 +42,10 @@ namespace EscapeFromDuckovCoopMod
                 var lGun = model.LefthandSocket ? model.LefthandSocket.GetComponentInChildren<ItemAgent_Gun>(true) : null;
                 if (lGun && lGun.Holder == null) lGun.SetHolder(cmc);
             }
-            catch { /* 仅做视觉兜底，静默失败即可 */ }
+            catch
+            {
+                /* 仅做视觉兜底，静默失败即可 */
+            }
         }
     }
 }

@@ -14,22 +14,19 @@
 // MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
 // GNU Affero General Public License for more details.
 
-﻿using Duckov.Scenes;
+﻿using System;
+using Cysharp.Threading.Tasks;
+using Duckov.Scenes;
 using Duckov.Utilities;
 using HarmonyLib;
-using System;
-using System.Collections.Generic;
-using System.Linq;
-using System.Text;
-using System.Threading.Tasks;
 using UnityEngine;
 
 namespace EscapeFromDuckovCoopMod
 {
     [HarmonyPatch(typeof(LootBoxLoader), "Setup")]
-    static class Patch_LootBoxLoader_Setup_GuardClientInit
+    internal static class Patch_LootBoxLoader_Setup_GuardClientInit
     {
-        static void Prefix()
+        private static void Prefix()
         {
             var m = ModBehaviourF.Instance;
             if (m != null && m.networkStarted && !m.IsServer)
@@ -37,7 +34,7 @@ namespace EscapeFromDuckovCoopMod
         }
 
         // 用 Finalizer 确保异常时也能退出“初始化阶段”
-        static void Finalizer(Exception __exception)
+        private static void Finalizer(Exception __exception)
         {
             var m = ModBehaviourF.Instance;
             if (m != null && m.networkStarted && !m.IsServer && m._clientLootSetupDepth > 0)
@@ -47,13 +44,13 @@ namespace EscapeFromDuckovCoopMod
 
 
     [HarmonyPatch(typeof(LootBoxLoader), "Setup")]
-    static class Patch_LootBoxLoader_Setup_BroadcastOnServer
+    internal static class Patch_LootBoxLoader_Setup_BroadcastOnServer
     {
-        static async void Postfix(LootBoxLoader __instance)
+        private static async void Postfix(LootBoxLoader __instance)
         {
             var m = ModBehaviourF.Instance;
             if (m == null || !m.networkStarted || !m.IsServer) return;
-            await Cysharp.Threading.Tasks.UniTask.Yield(); // 等一帧，确保物品都进箱子
+            await UniTask.Yield(); // 等一帧，确保物品都进箱子
             var box = __instance ? __instance.GetComponent<InteractableLootbox>() : null;
             var inv = box ? box.Inventory : null;
             if (inv != null) COOPManager.LootNet.Server_SendLootboxState(null, inv);
@@ -61,9 +58,9 @@ namespace EscapeFromDuckovCoopMod
     }
 
     [HarmonyPatch(typeof(LootBoxLoader), "RandomActive")]
-    static class Patch_LootBoxLoader_RandomActive_NetAuthority
+    internal static class Patch_LootBoxLoader_RandomActive_NetAuthority
     {
-        static bool Prefix(LootBoxLoader __instance)
+        private static bool Prefix(LootBoxLoader __instance)
         {
             var m = ModBehaviourF.Instance;
             if (m == null || !m.networkStarted || m.IsServer) return true;
@@ -74,17 +71,13 @@ namespace EscapeFromDuckovCoopMod
                 if (core == null) return true; // 没 core 就让它走原逻辑，避免极端时序问题
 
                 // 计算与游戏一致的 key（复制 GetKey 的算法）
-                int key = ModBehaviour_ComputeLootKeyCompat(__instance.transform);
+                var key = ModBehaviour_ComputeLootKeyCompat(__instance.transform);
 
 
-                if (core.inLevelData != null && core.inLevelData.TryGetValue(key, out object obj) && obj is bool on)
-                {
+                if (core.inLevelData != null && core.inLevelData.TryGetValue(key, out var obj) && obj is bool on)
                     __instance.gameObject.SetActive(on);
-                }
                 else
-                {
                     __instance.gameObject.SetActive(false); // 未拿到就先关
-                }
 
                 return false; // 阻止原始随机
             }
@@ -94,21 +87,15 @@ namespace EscapeFromDuckovCoopMod
             }
         }
 
-        static int ModBehaviour_ComputeLootKeyCompat(Transform t)
+        private static int ModBehaviour_ComputeLootKeyCompat(Transform t)
         {
             if (t == null) return 0;
             var v = t.position * 10f;
-            int x = Mathf.RoundToInt(v.x);
-            int y = Mathf.RoundToInt(v.y);
-            int z = Mathf.RoundToInt(v.z);
+            var x = Mathf.RoundToInt(v.x);
+            var y = Mathf.RoundToInt(v.y);
+            var z = Mathf.RoundToInt(v.z);
             var v3i = new Vector3Int(x, y, z);
             return v3i.GetHashCode();
         }
-
     }
-
-
-
-
-
 }

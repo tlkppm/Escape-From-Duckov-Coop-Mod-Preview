@@ -14,20 +14,16 @@
 // MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
 // GNU Affero General Public License for more details.
 
-﻿using Duckov.Modding;
+﻿using System;
 using HarmonyLib;
-using System;
-using System.Collections.Generic;
-using System.Linq;
-using System.Text;
-using System.Threading.Tasks;
 using UnityEngine;
 
 namespace EscapeFromDuckovCoopMod
 {
-    public class ModBehaviour:Duckov.Modding.ModBehaviour
+    public class ModBehaviour : Duckov.Modding.ModBehaviour
     {
         public Harmony Harmony;
+
         public void OnEnable()
         {
             Harmony = new Harmony("DETF_COOP");
@@ -38,13 +34,12 @@ namespace EscapeFromDuckovCoopMod
 
             go.AddComponent<NetService>();
             COOPManager.InitManager();
-            go.AddComponent<EscapeFromDuckovCoopMod.ModBehaviourF>();
+            go.AddComponent<ModBehaviourF>();
             Loader();
         }
 
         public void Loader()
         {
-
             var go = new GameObject("COOP_MOD_");
             DontDestroyOnLoad(go);
 
@@ -65,7 +60,6 @@ namespace EscapeFromDuckovCoopMod
 
         private void DeferredInit()
         {
-
             SafeInit<SceneNet>(sn => sn.Init());
             SafeInit<LootManager>(lm => lm.Init());
             SafeInit<LoaclPlayerManager>(lpm => lpm.Init());
@@ -78,20 +72,17 @@ namespace EscapeFromDuckovCoopMod
             SafeInit<DeadLootBox>(s => s.Init());
         }
 
-        private void SafeInit<T>(System.Action<T> init) where T : Component
+        private void SafeInit<T>(Action<T> init) where T : Component
         {
             var c = FindObjectOfType<T>();
             if (c == null) return;
-            try { init(c); } catch { }
+            try
+            {
+                init(c);
+            }
+            catch
+            {
+            }
         }
-
-
-
-
-
-
-
-
-
     }
 }

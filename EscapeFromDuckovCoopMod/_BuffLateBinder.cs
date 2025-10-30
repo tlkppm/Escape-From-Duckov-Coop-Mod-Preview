@@ -14,34 +14,28 @@
 // MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
 // GNU Affero General Public License for more details.
 
-﻿using Duckov.Buffs;
+﻿using System.Collections.Generic;
+using System.Reflection;
+using Duckov.Buffs;
 using HarmonyLib;
 using ItemStatsSystem;
-using System;
-using System.Collections.Generic;
-using System.Linq;
-using System.Reflection;
-using System.Text;
-using System.Threading.Tasks;
 using UnityEngine;
 
 namespace EscapeFromDuckovCoopMod
 {
-    class _BuffLateBinder : MonoBehaviour
+    internal class _BuffLateBinder : MonoBehaviour
     {
-        Buff _buff;
-        FieldInfo _fiEffects;
-        bool _done;
+        private Buff _buff;
+        private bool _done;
+        private FieldInfo _fiEffects;
 
-        public void Init(Buff buff, FieldInfo fiEffects)
+        private void Update()
         {
-            _buff = buff;
-            _fiEffects = fiEffects;
-        }
-
-        void Update()
-        {
-            if (_done || _buff == null) { Destroy(this); return; }
+            if (_done || _buff == null)
+            {
+                Destroy(this);
+                return;
+            }
 
             // 取 CharacterItem（Buff 里已有安全 getter）
             var cmc = (_buff ? AccessTools.Field(typeof(Buff), "master")?.GetValue(_buff) as CharacterBuffManager : null)?.Master;
@@ -54,17 +48,21 @@ namespace EscapeFromDuckovCoopMod
             // 2) 给所有 effect 绑定 Item
             var effectsObj = _fiEffects?.GetValue(_buff) as IList<Effect>;
             if (effectsObj != null)
-            {
-                for (int i = 0; i < effectsObj.Count; i++)
+                for (var i = 0; i < effectsObj.Count; i++)
                 {
                     var e = effectsObj[i];
                     if (e != null) e.SetItem(item);
                 }
-            }
 
             // 一次性完成，移除自己
             _done = true;
             Destroy(this);
+        }
+
+        public void Init(Buff buff, FieldInfo fiEffects)
+        {
+            _buff = buff;
+            _fiEffects = fiEffects;
         }
     }
 }

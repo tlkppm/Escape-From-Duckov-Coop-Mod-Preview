@@ -374,7 +374,11 @@
     </ItemGroup>
 
     <Target Name="CopyToModsFolder" AfterTargets="Build">
-        <Copy SourceFiles="$(OutputPath)\$(AssemblyName).dll" DestinationFolder="$(DUCKOV_MODS_DIRECTORY)\$(ProjectName)" SkipUnchangedFiles="true"/>
-        <Message Text="Copied DLL -&gt; $(DUCKOV_MODS_DIRECTORY)\$(ProjectName)\$(AssemblyName).dll" Importance="High"/>
+        <PropertyGroup>
+            <_ModFolder>$(DUCKOV_MODS_DIRECTORY)\$(ProjectName)</_ModFolder>
+        </PropertyGroup>
+
+        <Copy SourceFiles="$(OutputPath)\$(AssemblyName).dll" DestinationFolder="$(_ModFolder)" SkipUnchangedFiles="true"/>
+        <Message Text="Copied DLL -&gt; $(_ModFolder)\$(AssemblyName).dll" Importance="High"/>
     </Target>
 </Project>

@@ -14,10 +14,6 @@
 // MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
 // GNU Affero General Public License for more details.
 
-﻿using LiteNetLib;
-using LiteNetLib.Utils;
-using UnityEngine;
-
 namespace EscapeFromDuckovCoopMod
 {
     public class Send_ClientStatus : MonoBehaviour

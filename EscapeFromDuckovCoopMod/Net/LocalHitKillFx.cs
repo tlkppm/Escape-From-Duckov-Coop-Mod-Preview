@@ -14,10 +14,9 @@
 // MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
 // GNU Affero General Public License for more details.
 
-﻿using System.Reflection;
+using System.Reflection;
 using Duckov.Utilities;
 using FX;
-using UnityEngine;
 
 namespace EscapeFromDuckovCoopMod
 {

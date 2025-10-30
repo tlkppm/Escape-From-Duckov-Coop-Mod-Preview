@@ -12,6 +12,7 @@
         <TargetFrameworkVersion>v4.8</TargetFrameworkVersion>
         <FileAlignment>512</FileAlignment>
         <Deterministic>true</Deterministic>
+        <LangVersion>latest</LangVersion>
     </PropertyGroup>
     <PropertyGroup Condition=" '$(Configuration)|$(Platform)' == 'Debug|AnyCPU' ">
         <DebugSymbols>true</DebugSymbols>
@@ -36,6 +37,7 @@
         <Compile Include="AnimParamInterpolator .cs"/>
         <Compile Include="Anti_Cheat.cs"/>
         <Compile Include="AutoRequestHealthBar.cs"/>
+        <Compile Include="GlobalUsings.cs"/>
         <Compile Include="HostForceHealthBar.cs"/>
         <Compile Include="HoldVisualBinder.cs"/>
         <Compile Include="Main\AI\AIHealth.cs"/>

@@ -14,16 +14,10 @@
 // MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
 // GNU Affero General Public License for more details.
 
-﻿using System.Collections.Generic;
 using System.Linq;
-using Cysharp.Threading.Tasks;
 using Duckov.UI;
-using HarmonyLib;
 using ItemStatsSystem;
 using ItemStatsSystem.Items;
-using LiteNetLib;
-using LiteNetLib.Utils;
-using UnityEngine;
 using UnityEngine.SceneManagement;
 using static EscapeFromDuckovCoopMod.LootNet;
 

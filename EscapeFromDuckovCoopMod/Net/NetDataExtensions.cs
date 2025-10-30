@@ -14,10 +14,7 @@
 // MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
 // GNU Affero General Public License for more details.
 
-﻿using System.Runtime.CompilerServices;
-using LiteNetLib;
-using LiteNetLib.Utils;
-using UnityEngine;
+using System.Runtime.CompilerServices;
 
 namespace EscapeFromDuckovCoopMod
 {

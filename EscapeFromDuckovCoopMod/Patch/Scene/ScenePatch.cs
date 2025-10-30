@@ -14,10 +14,8 @@
 // MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
 // GNU Affero General Public License for more details.
 
-﻿using Duckov.Scenes;
+using Duckov.Scenes;
 using Eflatun.SceneReference;
-using HarmonyLib;
-using UnityEngine;
 
 namespace EscapeFromDuckovCoopMod
 {

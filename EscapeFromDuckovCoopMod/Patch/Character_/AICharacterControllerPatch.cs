@@ -14,10 +14,8 @@
 // MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
 // GNU Affero General Public License for more details.
 
-﻿using HarmonyLib;
 using NodeCanvas.Framework;
 using NodeCanvas.StateMachines;
-using UnityEngine;
 using UnityEngine.SceneManagement;
 
 namespace EscapeFromDuckovCoopMod

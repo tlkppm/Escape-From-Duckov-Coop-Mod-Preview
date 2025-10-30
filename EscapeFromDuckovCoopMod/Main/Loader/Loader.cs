@@ -14,9 +14,7 @@
 // MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
 // GNU Affero General Public License for more details.
 
-﻿using System;
-using HarmonyLib;
-using UnityEngine;
+using System;
 
 namespace EscapeFromDuckovCoopMod
 {

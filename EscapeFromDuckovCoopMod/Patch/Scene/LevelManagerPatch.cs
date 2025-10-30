@@ -14,11 +14,8 @@
 // MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
 // GNU Affero General Public License for more details.
 
-﻿using System;
-using Cysharp.Threading.Tasks;
+using System;
 using Duckov.UI;
-using HarmonyLib;
-using UnityEngine;
 using UnityEngine.EventSystems;
 
 namespace EscapeFromDuckovCoopMod

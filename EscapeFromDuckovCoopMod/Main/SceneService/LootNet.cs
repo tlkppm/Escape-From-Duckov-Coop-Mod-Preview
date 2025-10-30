@@ -14,18 +14,13 @@
 // MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
 // GNU Affero General Public License for more details.
 
-﻿using System;
-using System.Collections.Generic;
+using System;
 using System.Text;
 using Duckov.Scenes;
 using Duckov.UI;
 using Duckov.Utilities;
-using HarmonyLib;
 using ItemStatsSystem;
 using ItemStatsSystem.Items;
-using LiteNetLib;
-using LiteNetLib.Utils;
-using UnityEngine;
 using Object = UnityEngine.Object;
 
 namespace EscapeFromDuckovCoopMod

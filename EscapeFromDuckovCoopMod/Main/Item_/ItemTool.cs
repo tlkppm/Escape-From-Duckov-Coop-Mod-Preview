@@ -14,13 +14,8 @@
 // MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
 // GNU Affero General Public License for more details.
 
-﻿using System;
-using System.Collections.Generic;
-using Cysharp.Threading.Tasks;
+using System;
 using ItemStatsSystem;
-using LiteNetLib;
-using LiteNetLib.Utils;
-using UnityEngine;
 using static EscapeFromDuckovCoopMod.LootNet;
 using Object = UnityEngine.Object;
 

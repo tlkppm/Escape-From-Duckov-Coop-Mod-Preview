@@ -14,8 +14,6 @@
 // MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
 // GNU Affero General Public License for more details.
 
-﻿using HarmonyLib;
-
 namespace EscapeFromDuckovCoopMod
 {
     //给 CharacterItemControl.PickupItem 打前后钩，围出一个方法域

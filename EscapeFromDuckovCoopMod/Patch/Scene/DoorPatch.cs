@@ -14,8 +14,6 @@
 // MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
 // GNU Affero General Public License for more details.
 
-﻿using HarmonyLib;
-
 namespace EscapeFromDuckovCoopMod
 {
     // ========= 客户端：拦截 Door.Open -> 发送请求给主机 =========

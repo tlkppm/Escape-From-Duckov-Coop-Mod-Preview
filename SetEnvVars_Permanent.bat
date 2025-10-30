@@ -1,16 +1,6 @@
 @echo off
+setlocal EnableDelayedExpansion
 chcp 65001 >nul
-
-REM Check admin rights and auto-elevate if needed
-net session >nul 2>&1
-if %errorLevel% neq 0 (
-    echo Requesting administrator privileges...
-    echo.
-    
-    REM Use PowerShell to elevate
-    powershell -Command "Start-Process -FilePath '%~f0' -Verb RunAs"
-    exit /b
-)
 
 echo ========================================
 echo Duckov Mod Environment Setup (Permanent)
@@ -25,28 +15,33 @@ echo.
 
 set /p "DUCKOV_GAME_MANAGED=Enter path: "
 
-:SET_ENV
+REM Check if input is empty
+if "!DUCKOV_GAME_MANAGED!"=="" (
+    echo.
+    echo [ERROR] Path cannot be empty!
+    echo.
+    pause
+    exit /b 1
+)
+
 echo.
 echo ========================================
 echo Setting environment variable...
 echo ========================================
-
-REM Check if path exists
-echo Validating path...
-if not exist "%DUCKOV_GAME_MANAGED%" (
-    echo [WARNING] Path not found: %DUCKOV_GAME_MANAGED%
-    echo.
-)
-
+echo.
+echo Path to set: !DUCKOV_GAME_MANAGED!
 echo.
 echo Setting permanent user environment variable...
 
-REM Use setx to set user environment variable
-setx DUCKOV_GAME_MANAGED "%DUCKOV_GAME_MANAGED%" >nul
-if %errorLevel% equ 0 (
+REM Use setx to set user environment variable (no admin rights needed for user variables)
+setx DUCKOV_GAME_MANAGED "!DUCKOV_GAME_MANAGED!"
+if !errorLevel! equ 0 (
+    echo.
     echo [SUCCESS] DUCKOV_GAME_MANAGED set successfully
 ) else (
+    echo.
     echo [FAILED] DUCKOV_GAME_MANAGED failed to set
+    echo Error code: !errorLevel!
 )
 
 echo.
@@ -55,7 +50,7 @@ echo Environment variable set successfully!
 echo ========================================
 echo.
 echo Variable set:
-echo   DUCKOV_GAME_MANAGED=%DUCKOV_GAME_MANAGED%
+echo   DUCKOV_GAME_MANAGED=!DUCKOV_GAME_MANAGED!
 echo.
 echo IMPORTANT:
 echo 1. Restart any open programs to load new environment variable
@@ -64,3 +59,4 @@ echo 3. Command windows must be closed and reopened
 echo.
 
 pause
+endlocal

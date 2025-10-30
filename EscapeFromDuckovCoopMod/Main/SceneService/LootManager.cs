@@ -1,4 +1,4 @@
-// Escape-From-Duckov-Coop-Mod-Preview
+﻿// Escape-From-Duckov-Coop-Mod-Preview
 // Copyright (C) 2025  Mr.sans and InitLoader's team
 //
 // This program is not a free software.
@@ -195,6 +195,8 @@ internal static class DeadLootSpawnContext
 
 public static class LootboxDetectUtil
 {
+    static InteractableLootbox[] cache;
+
     public static bool IsPrivateInventory(Inventory inv)
     {
         if (inv == null) return false;
@@ -214,12 +216,36 @@ public static class LootboxDetectUtil
             foreach (var kv in dict)
                 if (kv.Value == inv)
                     return true;
-        var boxes = Object.FindObjectsOfType<InteractableLootbox>(true);
-        foreach (var b in boxes)
-            if (b && b.Inventory == inv)
-                return true;
 
-        return false;
+        return TryGetInventoryLootBox(inv) != null;
+    }
+
+    public static InteractableLootbox TryGetInventoryLootBox(Inventory inv)
+    {
+        // 先尝试缓存
+        if (cache != null)
+        {
+            foreach (var b in cache)
+            {
+                if (b && b.Inventory == inv)
+                {
+                    return b;
+                }
+            }
+        }
+
+        // Fallback
+        var boxes = Object.FindObjectsOfType<InteractableLootbox>(true);
+        cache = boxes; // 更新缓存
+        foreach (var b in boxes)
+        {
+            if (b && b.Inventory == inv)
+            {
+                return b;
+            }
+        }
+
+        return null;
     }
 }
 
@@ -289,16 +315,11 @@ public class LootManager : MonoBehaviour
 
         if (inv != null && (posKey < 0 || instanceId < 0))
         {
-            var boxes = FindObjectsOfType<InteractableLootbox>();
-            foreach (var b in boxes)
+            var b = LootboxDetectUtil.TryGetInventoryLootBox(inv);
+            if (b != null)
             {
-                if (!b) continue;
-                if (b.Inventory == inv)
-                {
-                    posKey = ComputeLootKey(b.transform);
-                    instanceId = b.GetInstanceID();
-                    break;
-                }
+                posKey = ComputeLootKey(b.transform);
+                instanceId = b.GetInstanceID();
             }
         }
 

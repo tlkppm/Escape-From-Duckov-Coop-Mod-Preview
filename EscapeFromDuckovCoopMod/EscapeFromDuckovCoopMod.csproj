@@ -491,6 +491,11 @@
             <HintPath>$(DUCKOV_GAME_MANAGED)\UnityEngine.UI.dll</HintPath>
         </Reference>
     </ItemGroup>
-    <ItemGroup/>
+
+    <Target Name="CopyToModsFolder" AfterTargets="Build">
+        <Copy SourceFiles="$(OutputPath)\$(AssemblyName).dll" DestinationFolder="$(DUCKOV_MODS_DIRECTORY)\$(ProjectName)" SkipUnchangedFiles="true"/>
+        <Message Text="Copied DLL -&gt; $(DUCKOV_MODS_DIRECTORY)\$(ProjectName)\$(AssemblyName).dll" Importance="High"/>
+    </Target>
+
     <Import Project="$(MSBuildToolsPath)\Microsoft.CSharp.targets"/>
 </Project>

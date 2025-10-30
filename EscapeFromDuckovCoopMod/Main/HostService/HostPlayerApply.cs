@@ -18,7 +18,7 @@ using Duckov.Utilities;
 
 namespace EscapeFromDuckovCoopMod;
 
-public class HostPlayer_Apply
+public class HostPlayerApply
 {
     private const float WeaponApplyDebounce = 0.20f; // 200ms 去抖窗口
 

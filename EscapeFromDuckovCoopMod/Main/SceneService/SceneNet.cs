@@ -435,7 +435,7 @@ public class SceneNet : MonoBehaviour
             allowLocalSceneLoad = false;
             if (networkStarted)
             {
-                if (IsServer) Send_LoaclPlayerStatus.Instance.SendPlayerStatusUpdate();
+                if (IsServer) SendLocalPlayerStatus.Instance.SendPlayerStatusUpdate();
                 else Send_ClientStatus.Instance.SendClientStatusUpdate();
             }
         }

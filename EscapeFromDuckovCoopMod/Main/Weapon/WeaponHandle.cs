@@ -336,7 +336,7 @@ public class WeaponHandle
                 LevelManager.Instance?.MainCharacter ? LevelManager.Instance.MainCharacter.Team : Teams.player
         };
 
-        var gotPayload = r.AvailableBytes > 0 && NetPack_Projectile.TryGetProjectilePayload(r, ref ctx);
+        var gotPayload = r.AvailableBytes > 0 && NetPackProjectile.TryGetProjectilePayload(r, ref ctx);
 
         // —— 只有在“旧包/无载荷”的情况下，才用本地枪械做兜底推导 —— 
         if (!gotPayload && gun != null)
@@ -493,7 +493,7 @@ public class WeaponHandle
 
         // 读取客户端随包提示载荷（可能不存在，Try 不会抛异常）
         _payloadHint = default;
-        _hasPayloadHint = NetPack_Projectile.TryGetProjectilePayload(r, ref _payloadHint);
+        _hasPayloadHint = NetPackProjectile.TryGetProjectilePayload(r, ref _payloadHint);
 
         if (!remoteCharacters.TryGetValue(peer, out var who) || !who)
         {

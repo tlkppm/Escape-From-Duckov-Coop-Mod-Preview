@@ -20,7 +20,7 @@ using ItemStatsSystem;
 
 namespace EscapeFromDuckovCoopMod;
 
-internal class _BuffLateBinder : MonoBehaviour
+internal class BuffLateBinder : MonoBehaviour
 {
     private Buff _buff;
     private bool _done;

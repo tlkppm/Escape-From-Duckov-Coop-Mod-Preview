@@ -16,9 +16,9 @@
 
 namespace EscapeFromDuckovCoopMod;
 
-public class Send_LoaclPlayerStatus : MonoBehaviour
+public class SendLocalPlayerStatus : MonoBehaviour
 {
-    public static Send_LoaclPlayerStatus Instance;
+    public static SendLocalPlayerStatus Instance;
 
     private NetService Service => NetService.Instance;
     private bool IsServer => Service != null && Service.IsServer;

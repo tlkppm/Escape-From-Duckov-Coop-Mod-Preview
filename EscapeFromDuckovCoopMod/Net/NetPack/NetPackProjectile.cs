@@ -16,7 +16,7 @@
 
 namespace EscapeFromDuckovCoopMod;
 
-public static class NetPack_Projectile
+public static class NetPackProjectile
 {
     public static void PutProjectilePayload(this NetDataWriter w, in ProjectileContext c)
     {

@@ -216,7 +216,7 @@ public class LoaclPlayerManager : MonoBehaviour
             SlotHash = (int)slotHash,
             ItemId = itemId
         };
-        Send_LoaclPlayerStatus.Instance.SendWeaponUpdate(weaponData);
+        SendLocalPlayerStatus.Instance.SendWeaponUpdate(weaponData);
     }
 
     public void ModBehaviour_onSlotContentChanged(Slot obj)
@@ -235,7 +235,7 @@ public class LoaclPlayerManager : MonoBehaviour
         if (obj.Key == "Head") slotHash1 = 500;
 
         var equipmentData1 = new EquipmentSyncData { SlotHash = slotHash1, ItemId = itemId1 };
-        Send_LoaclPlayerStatus.Instance.SendEquipmentUpdate(equipmentData1);
+        SendLocalPlayerStatus.Instance.SendEquipmentUpdate(equipmentData1);
     }
 
     public void UpdatePlayerStatuses()
@@ -264,7 +264,7 @@ public class LoaclPlayerManager : MonoBehaviour
 
 
             if (!IsServer) Send_ClientStatus.Instance.SendClientStatusUpdate();
-            else Send_LoaclPlayerStatus.Instance.SendPlayerStatusUpdate();
+            else SendLocalPlayerStatus.Instance.SendPlayerStatusUpdate();
         }
         else if (currentIsInGame && levelManager != null && levelManager.MainCharacter != null)
         {

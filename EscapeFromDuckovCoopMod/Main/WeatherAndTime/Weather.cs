@@ -144,7 +144,7 @@ public class Weather
         var includeDoors = target != null;
         if (includeDoors)
         {
-            var doors = Object.FindObjectsOfType<Door>(true);
+            var doors = Object.FindObjectsOfType<global::Door>(true);
             var tmp = new List<(int key, bool closed)>(doors.Length);
 
             foreach (var d in doors)
@@ -153,7 +153,7 @@ public class Weather
                 var k = 0;
                 try
                 {
-                    k = (int)AccessTools.Field(typeof(Door), "doorClosedDataKeyCached").GetValue(d);
+                    k = (int)AccessTools.Field(typeof(global::Door), "doorClosedDataKeyCached").GetValue(d);
                 }
                 catch
                 {

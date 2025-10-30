@@ -16,7 +16,7 @@
 
 namespace EscapeFromDuckovCoopMod;
 
-public class Client_Handle
+public class ClientHandle
 {
     private NetService Service => NetService.Instance;
 
@@ -87,6 +87,6 @@ public class Client_Handle
 
         playerStatuses[peer] = st;
 
-        Send_LoaclPlayerStatus.Instance.SendPlayerStatusUpdate();
+        SendLocalPlayerStatus.Instance.SendPlayerStatusUpdate();
     }
 }

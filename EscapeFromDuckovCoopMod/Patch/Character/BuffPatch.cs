@@ -70,9 +70,9 @@ internal static class Patch_Buff_Setup_Safe
         onSetupEvent?.Invoke();
 
         // 挂一个一次性补丁组件，等 CharacterItem 可用后把 SetItem/SetParent 补上
-        if (!__instance.gameObject.GetComponent<_BuffLateBinder>())
+        if (!__instance.gameObject.GetComponent<BuffLateBinder>())
         {
-            var binder = __instance.gameObject.AddComponent<_BuffLateBinder>();
+            var binder = __instance.gameObject.AddComponent<BuffLateBinder>();
             binder.Init(__instance, FI_effects);
         }
 

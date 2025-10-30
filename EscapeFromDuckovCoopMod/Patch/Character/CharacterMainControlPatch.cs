@@ -128,7 +128,7 @@ internal static class Patch_Client_OnDead_ReportCorpseTree
             DeadLootSpawnContext.InOnDead = __instance;
 
             // 首次上报整棵“尸体装备树”给主机（你已有的方法）
-            Send_LoaclPlayerStatus.Instance.Net_ReportPlayerDeadTree(__instance);
+            SendLocalPlayerStatus.Instance.Net_ReportPlayerDeadTree(__instance);
 
             // ✅ 标记“本轮生命已经上报过尸体树”
             LoaclPlayerManager.Instance._cliCorpseTreeReported = true;

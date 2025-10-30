@@ -18,7 +18,7 @@ using Object = UnityEngine.Object;
 
 namespace EscapeFromDuckovCoopMod;
 
-public class Door_
+public class Door
 {
     [ThreadStatic] public static bool _applyingDoor; // 客户端正在应用网络下发，避免误触发本地拦截
     private NetService Service => NetService.Instance;
@@ -45,12 +45,12 @@ public class Door_
     }
 
     // 通过 key 找场景里的 Door（优先用其缓存字段 doorClosedDataKeyCached）
-    public Door FindDoorByKey(int key)
+    public global::Door FindDoorByKey(int key)
     {
         if (key == 0) return null;
-        var doors = Object.FindObjectsOfType<Door>(true);
-        var fCache = AccessTools.Field(typeof(Door), "doorClosedDataKeyCached");
-        var mGetKey = AccessTools.Method(typeof(Door), "GetKey");
+        var doors = Object.FindObjectsOfType<global::Door>(true);
+        var fCache = AccessTools.Field(typeof(global::Door), "doorClosedDataKeyCached");
+        var mGetKey = AccessTools.Method(typeof(global::Door), "GetKey");
 
         foreach (var d in doors)
         {
@@ -80,7 +80,7 @@ public class Door_
     }
 
     // 客户端：请求把某门设为 closed/open
-    public void Client_RequestDoorSetState(Door d, bool closed)
+    public void Client_RequestDoorSetState(global::Door d, bool closed)
     {
         if (IsServer || connectedPeer == null || d == null) return;
 
@@ -88,7 +88,7 @@ public class Door_
         try
         {
             // 优先用缓存字段；无则重算（与 Door.GetKey 一致）
-            key = (int)AccessTools.Field(typeof(Door), "doorClosedDataKeyCached").GetValue(d);
+            key = (int)AccessTools.Field(typeof(global::Door), "doorClosedDataKeyCached").GetValue(d);
         }
         catch
         {
@@ -147,7 +147,7 @@ public class Door_
         {
             _applyingDoor = true;
 
-            var mSetClosed2 = AccessTools.Method(typeof(Door), "SetClosed",
+            var mSetClosed2 = AccessTools.Method(typeof(global::Door), "SetClosed",
                 new[] { typeof(bool), typeof(bool) });
             if (mSetClosed2 != null)
             {
@@ -156,9 +156,9 @@ public class Door_
             else
             {
                 if (closed)
-                    AccessTools.Method(typeof(Door), "Close")?.Invoke(door, null);
+                    AccessTools.Method(typeof(global::Door), "Close")?.Invoke(door, null);
                 else
-                    AccessTools.Method(typeof(Door), "Open")?.Invoke(door, null);
+                    AccessTools.Method(typeof(global::Door), "Open")?.Invoke(door, null);
             }
         }
         finally

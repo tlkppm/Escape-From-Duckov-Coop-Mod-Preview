@@ -83,7 +83,7 @@ public class NetService : MonoBehaviour, INetEventListener
                 CustomFaceJson = null
             };
 
-        if (IsServer) Send_LoaclPlayerStatus.Instance.SendPlayerStatusUpdate();
+        if (IsServer) SendLocalPlayerStatus.Instance.SendPlayerStatusUpdate();
 
         if (IsServer)
         {

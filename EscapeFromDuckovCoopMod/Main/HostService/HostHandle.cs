@@ -19,7 +19,7 @@ using Object = UnityEngine.Object;
 
 namespace EscapeFromDuckovCoopMod;
 
-public class Host_Handle
+public class HostHandle
 {
     private NetService Service => NetService.Instance;
 

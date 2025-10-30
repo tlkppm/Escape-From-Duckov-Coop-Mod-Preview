@@ -15,40 +15,25 @@
 // GNU Affero General Public License for more details.
 
 ﻿using System;
-using System.Collections.Generic;
-using System.Linq;
-using System.Text;
-using System.Threading.Tasks;
 using UnityEngine;
 
 namespace EscapeFromDuckovCoopMod
 {
     internal class Anti_Cheat
     {
-        public void 开玩笑_看啥呢_XDD  ()
+        public void 开玩笑_看啥呢_XDD()
         {
-            if(true)
-            {
-                if(true)
-                {
+            if (true)
+                if (true)
                     if (true)
-                    {
                         if (true)
-                        {
                             if (true)
-                            {
                                 if (true)
-                                {
                                     if (true)
-                                    {
                                         if (true)
-                                        {
                                             if (true)
-                                            {
                                                 if (true)
-                                                {
                                                     if (true)
-                                                    {
                                                         if (true)
                                                         {
                                                             if (DateTime.Now.DayOfWeek == DayOfWeek.Friday)
@@ -56,17 +41,6 @@ namespace EscapeFromDuckovCoopMod
 
                                                             Debug.Log("It works on my machine™");
                                                         }
-                                                    }
-                                                }
-                                            }
-                                        }
-                                    }
-                                }
-                            }
-                        }
-                    }
-                }
-            }
         }
     }
 }

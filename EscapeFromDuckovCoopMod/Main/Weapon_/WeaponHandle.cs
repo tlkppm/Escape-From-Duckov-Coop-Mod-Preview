@@ -14,21 +14,30 @@
 // MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
 // GNU Affero General Public License for more details.
 
-﻿using Duckov.Utilities;
+﻿using System;
+using System.Collections.Generic;
+using Duckov.Utilities;
 using HarmonyLib;
 using LiteNetLib;
 using LiteNetLib.Utils;
-using System;
-using System.Collections.Generic;
-using System.Linq;
-using System.Text;
-using System.Threading.Tasks;
 using UnityEngine;
+using Random = UnityEngine.Random;
 
 namespace EscapeFromDuckovCoopMod
 {
     public class WeaponHandle
     {
+        private readonly Dictionary<int, float> _distCacheByWeaponType = new Dictionary<int, float>();
+        private readonly Dictionary<int, float> _explDamageCacheByWeaponType = new Dictionary<int, float>();
+
+        // 爆炸参数缓存（主机记住每种武器的爆炸半径/伤害）
+        private readonly Dictionary<int, float> _explRangeCacheByWeaponType = new Dictionary<int, float>();
+
+        public readonly HashSet<Projectile> _serverSpawnedFromClient = new HashSet<Projectile>();
+
+        private readonly Dictionary<int, float> _speedCacheByWeaponType = new Dictionary<int, float>();
+        public bool _hasPayloadHint;
+        public ProjectileContext _payloadHint;
         private NetService Service => NetService.Instance;
 
         private bool IsServer => Service != null && Service.IsServer;
@@ -40,44 +49,32 @@ namespace EscapeFromDuckovCoopMod
         private Dictionary<NetPeer, GameObject> remoteCharacters => Service?.remoteCharacters;
         private Dictionary<NetPeer, PlayerStatus> playerStatuses => Service?.playerStatuses;
         private Dictionary<string, GameObject> clientRemoteCharacters => Service?.clientRemoteCharacters;
-        public bool _hasPayloadHint;
-        public ProjectileContext _payloadHint;
-
-        // 爆炸参数缓存（主机记住每种武器的爆炸半径/伤害）
-        private readonly Dictionary<int, float> _explRangeCacheByWeaponType = new Dictionary<int, float>();
-        private readonly Dictionary<int, float> _explDamageCacheByWeaponType = new Dictionary<int, float>();
-
-        public readonly HashSet<Projectile> _serverSpawnedFromClient = new HashSet<Projectile>();
-
-        private readonly Dictionary<int, float> _speedCacheByWeaponType = new Dictionary<int, float>();
-        private readonly Dictionary<int, float> _distCacheByWeaponType = new Dictionary<int, float>();
 
 
         // 主机：真正生成子弹（用 clientScatter 代替本地的 gun.CurrentScatter 参与随机散布）
-        bool Server_SpawnProjectile(ItemAgent_Gun gun, Vector3 muzzle, Vector3 baseDir, Vector3 firstCheckStart, out Vector3 finalDir, float clientScatter, float ads01)
+        private bool Server_SpawnProjectile(ItemAgent_Gun gun, Vector3 muzzle, Vector3 baseDir, Vector3 firstCheckStart, out Vector3 finalDir, float clientScatter,
+            float ads01)
         {
             finalDir = baseDir.sqrMagnitude < 1e-8f ? Vector3.forward : baseDir.normalized;
 
             // ====== 随机散布仍由主机来做，但幅度优先用客户端提示的散布 ======
-            bool isMain = (gun.Holder && gun.Holder.IsMainCharacter);
-            float extra = 0f;
+            var isMain = gun.Holder && gun.Holder.IsMainCharacter;
+            var extra = 0f;
             if (isMain)
-            {
                 // 和原版一致：仅主角才叠加耐久衰减额外散布
                 extra = Mathf.Max(1f, gun.CurrentScatter) * Mathf.Lerp(1.5f, 0f, Mathf.InverseLerp(0f, 0.5f, gun.durabilityPercent));
-            }
 
             // 核心：优先采用客户端当前帧的散布（它已把ADS影响折进 CurrentScatter 里）
-            float usedScatter = (clientScatter > 0f ? clientScatter : gun.CurrentScatter);
+            var usedScatter = clientScatter > 0f ? clientScatter : gun.CurrentScatter;
 
             // 计算偏航
-            float yaw = UnityEngine.Random.Range(-0.5f, 0.5f) * (usedScatter + extra);
+            var yaw = Random.Range(-0.5f, 0.5f) * (usedScatter + extra);
             finalDir = (Quaternion.Euler(0f, yaw, 0f) * finalDir).normalized;
 
             // ====== 生成 Projectile ======
-            var projectile = (gun.GunItemSetting && gun.GunItemSetting.bulletPfb)
+            var projectile = gun.GunItemSetting && gun.GunItemSetting.bulletPfb
                 ? gun.GunItemSetting.bulletPfb
-                : Duckov.Utilities.GameplayDataSettings.Prefabs.DefaultBullet;
+                : GameplayDataSettings.Prefabs.DefaultBullet;
 
             var projInst = LevelManager.Instance.BulletPool.GetABullet(projectile);
             projInst.transform.position = muzzle;
@@ -85,19 +82,19 @@ namespace EscapeFromDuckovCoopMod
             projInst.transform.rotation = Quaternion.LookRotation(finalDir, Vector3.up);
 
             // ====== 依赖 Holder/子弹 的数值（保持你原来的兜底写法，不改动） ======
-            float characterDamageMultiplier = (gun.Holder != null) ? gun.CharacterDamageMultiplier : 1f;
-            float gunBulletSpeedMul = (gun.Holder != null) ? gun.Holder.GunBulletSpeedMultiplier : 1f;
+            var characterDamageMultiplier = gun.Holder != null ? gun.CharacterDamageMultiplier : 1f;
+            var gunBulletSpeedMul = gun.Holder != null ? gun.Holder.GunBulletSpeedMultiplier : 1f;
 
-            bool hasBulletItem = (gun.BulletItem != null);
-            float bulletDamageMul = hasBulletItem ? gun.BulletDamageMultiplier : 1f;
-            float bulletCritRateGain = hasBulletItem ? gun.bulletCritRateGain : 0f;
-            float bulletCritDmgGain = hasBulletItem ? gun.BulletCritDamageFactorGain : 0f;
-            float bulletArmorPiercingGain = hasBulletItem ? gun.BulletArmorPiercingGain : 0f;
-            float bulletArmorBreakGain = hasBulletItem ? gun.BulletArmorBreakGain : 0f;
-            float bulletExplosionRange = hasBulletItem ? gun.BulletExplosionRange : 0f;
-            float bulletExplosionDamage = hasBulletItem ? gun.BulletExplosionDamage : 0f;
-            float bulletBuffChanceMul = hasBulletItem ? gun.BulletBuffChanceMultiplier : 0f;
-            float bulletBleedChance = hasBulletItem ? gun.BulletBleedChance : 0f;
+            var hasBulletItem = gun.BulletItem != null;
+            var bulletDamageMul = hasBulletItem ? gun.BulletDamageMultiplier : 1f;
+            var bulletCritRateGain = hasBulletItem ? gun.bulletCritRateGain : 0f;
+            var bulletCritDmgGain = hasBulletItem ? gun.BulletCritDamageFactorGain : 0f;
+            var bulletArmorPiercingGain = hasBulletItem ? gun.BulletArmorPiercingGain : 0f;
+            var bulletArmorBreakGain = hasBulletItem ? gun.BulletArmorBreakGain : 0f;
+            var bulletExplosionRange = hasBulletItem ? gun.BulletExplosionRange : 0f;
+            var bulletExplosionDamage = hasBulletItem ? gun.BulletExplosionDamage : 0f;
+            var bulletBuffChanceMul = hasBulletItem ? gun.BulletBuffChanceMultiplier : 0f;
+            var bulletBleedChance = hasBulletItem ? gun.BulletBleedChance : 0f;
 
             // === 若 BulletItem 缺失，用“客户端提示载荷/本地缓存”兜底爆炸参数（保持原样） ===
             try
@@ -109,6 +106,7 @@ namespace EscapeFromDuckovCoopMod
                     else if (_explRangeCacheByWeaponType.TryGetValue(gun.Item.TypeID, out var cachedR))
                         bulletExplosionRange = cachedR;
                 }
+
                 if (bulletExplosionDamage <= 0f)
                 {
                     if (_hasPayloadHint && _payloadHint.fromWeaponItemID == gun.Item.TypeID && _payloadHint.explosionDamage > 0f)
@@ -116,10 +114,13 @@ namespace EscapeFromDuckovCoopMod
                     else if (_explDamageCacheByWeaponType.TryGetValue(gun.Item.TypeID, out var cachedD))
                         bulletExplosionDamage = cachedD;
                 }
+
                 if (bulletExplosionRange > 0f) _explRangeCacheByWeaponType[gun.Item.TypeID] = bulletExplosionRange;
                 if (bulletExplosionDamage > 0f) _explDamageCacheByWeaponType[gun.Item.TypeID] = bulletExplosionDamage;
             }
-            catch { }
+            catch
+            {
+            }
 
             var ctx = new ProjectileContext
             {
@@ -140,7 +141,7 @@ namespace EscapeFromDuckovCoopMod
             };
 
             // 伤害（和你原来的除以 ShotCount 的逻辑一致）
-            int perShotDiv = Mathf.Max(1, gun.ShotCount);
+            var perShotDiv = Mathf.Max(1, gun.ShotCount);
             ctx.damage = gun.Damage * bulletDamageMul * characterDamageMultiplier / perShotDiv;
             if (gun.Damage > 1f && ctx.damage < 1f) ctx.damage = 1f;
 
@@ -154,10 +155,7 @@ namespace EscapeFromDuckovCoopMod
                 case ElementTypes.space: ctx.element_Space = 1f; break;
             }
 
-            if (bulletBuffChanceMul > 0f)
-            {
-                ctx.buffChance = bulletBuffChanceMul * gun.BuffChance;
-            }
+            if (bulletBuffChanceMul > 0f) ctx.buffChance = bulletBuffChanceMul * gun.BuffChance;
 
             // fromCharacter / team 兜底，确保进入伤害系统
             if (gun.Holder)
@@ -175,6 +173,7 @@ namespace EscapeFromDuckovCoopMod
                     ctx.fromCharacter = hostChar;
                 }
             }
+
             if (ctx.critRate > 0.99f) ctx.ignoreHalfObsticle = true;
 
             projInst.Init(ctx);
@@ -190,13 +189,13 @@ namespace EscapeFromDuckovCoopMod
             var proj = Traverse.Create(gun).Field<Projectile>("projInst").Value;
             if (proj == null) return;
 
-            Vector3 finalDir = proj.transform.forward;
-            if (finalDir.sqrMagnitude < 1e-8f) finalDir = (gun.muzzle ? gun.muzzle.forward : Vector3.forward);
+            var finalDir = proj.transform.forward;
+            if (finalDir.sqrMagnitude < 1e-8f) finalDir = gun.muzzle ? gun.muzzle.forward : Vector3.forward;
             finalDir.Normalize();
 
-            Vector3 muzzleWorld = proj.transform.position;
-            float speed = gun.BulletSpeed * (gun.Holder ? gun.Holder.GunBulletSpeedMultiplier : 1f);
-            float distance = gun.BulletDistance + 0.4f;
+            var muzzleWorld = proj.transform.position;
+            var speed = gun.BulletSpeed * (gun.Holder ? gun.Holder.GunBulletSpeedMultiplier : 1f);
+            var distance = gun.BulletDistance + 0.4f;
 
             var w = writer;
             if (w == null) return;
@@ -211,49 +210,63 @@ namespace EscapeFromDuckovCoopMod
 
             var payloadCtx = new ProjectileContext();
 
-            bool hasBulletItem = false;
-            try { hasBulletItem = (gun.BulletItem != null); } catch { }
+            var hasBulletItem = false;
+            try
+            {
+                hasBulletItem = gun.BulletItem != null;
+            }
+            catch
+            {
+            }
 
             float charMul = 1f, bulletMul = 1f;
-            int shots = 1;
+            var shots = 1;
             try
             {
                 charMul = gun.CharacterDamageMultiplier;
                 bulletMul = hasBulletItem ? Mathf.Max(0.0001f, gun.BulletDamageMultiplier) : 1f;
                 shots = Mathf.Max(1, gun.ShotCount);
             }
-            catch { }
+            catch
+            {
+            }
 
             try
             {
                 payloadCtx.damage = gun.Damage * bulletMul * charMul / shots;
                 if (gun.Damage > 1f && payloadCtx.damage < 1f) payloadCtx.damage = 1f;
             }
-            catch { if (payloadCtx.damage <= 0f) payloadCtx.damage = 1f; }
+            catch
+            {
+                if (payloadCtx.damage <= 0f) payloadCtx.damage = 1f;
+            }
 
             try
             {
-                float bulletCritRateGain = hasBulletItem ? gun.bulletCritRateGain : 0f;
-                float bulletCritDmgGain = hasBulletItem ? gun.BulletCritDamageFactorGain : 0f;
+                var bulletCritRateGain = hasBulletItem ? gun.bulletCritRateGain : 0f;
+                var bulletCritDmgGain = hasBulletItem ? gun.BulletCritDamageFactorGain : 0f;
                 payloadCtx.critDamageFactor = (gun.CritDamageFactor + bulletCritDmgGain) * (1f + gun.CharacterGunCritDamageGain);
                 payloadCtx.critRate = gun.CritRate * (1f + gun.CharacterGunCritRateGain + bulletCritRateGain);
             }
-            catch { }
+            catch
+            {
+            }
 
             try
             {
-                float apGain = hasBulletItem ? gun.BulletArmorPiercingGain : 0f;
-                float abGain = hasBulletItem ? gun.BulletArmorBreakGain : 0f;
+                var apGain = hasBulletItem ? gun.BulletArmorPiercingGain : 0f;
+                var abGain = hasBulletItem ? gun.BulletArmorBreakGain : 0f;
                 payloadCtx.armorPiercing = gun.ArmorPiercing + apGain;
                 payloadCtx.armorBreak = gun.ArmorBreak + abGain;
             }
-            catch { }
+            catch
+            {
+            }
 
             try
             {
                 var setting = gun.GunItemSetting;
                 if (setting != null)
-                {
                     switch (setting.element)
                     {
                         case ElementTypes.physics: payloadCtx.element_Physics = 1f; break;
@@ -262,7 +275,6 @@ namespace EscapeFromDuckovCoopMod
                         case ElementTypes.electricity: payloadCtx.element_Electricity = 1f; break;
                         case ElementTypes.space: payloadCtx.element_Space = 1f; break;
                     }
-                }
 
                 payloadCtx.explosionRange = gun.BulletExplosionRange;
                 payloadCtx.explosionDamage = gun.BulletExplosionDamage * gun.ExplosionDamageMultiplier;
@@ -276,23 +288,25 @@ namespace EscapeFromDuckovCoopMod
                 payloadCtx.penetrate = gun.Penetrate;
                 payloadCtx.fromWeaponItemID = gun.Item.TypeID;
             }
-            catch { }
+            catch
+            {
+            }
 
             w.PutProjectilePayload(payloadCtx);
             netManager.SendToAll(w, DeliveryMethod.ReliableOrdered);
 
-           FxManager.PlayMuzzleFxAndShell(localPlayerStatus.EndPoint, gun.Item.TypeID, muzzleWorld, finalDir);
+            FxManager.PlayMuzzleFxAndShell(localPlayerStatus.EndPoint, gun.Item.TypeID, muzzleWorld, finalDir);
         }
 
         public void HandleFireEvent(NetPacketReader r)
         {
             // —— 主机广播的“射击视觉事件”的基础参数 —— 
-            string shooterId = r.GetString();
-            int weaponType = r.GetInt();
-            Vector3 muzzle = r.GetV3cm();
-            Vector3 dir = r.GetDir();
-            float speed = r.GetFloat();
-            float distance = r.GetFloat();
+            var shooterId = r.GetString();
+            var weaponType = r.GetInt();
+            var muzzle = r.GetV3cm();
+            var dir = r.GetDir();
+            var speed = r.GetFloat();
+            var distance = r.GetFloat();
 
             // 尝试找到“开火者”的枪口（仅用于起点兜底/特效）
             CharacterMainControl shooterCMC = null;
@@ -300,7 +314,8 @@ namespace EscapeFromDuckovCoopMod
             else if (clientRemoteCharacters.TryGetValue(shooterId, out var shooterGo) && shooterGo)
                 shooterCMC = shooterGo.GetComponent<CharacterMainControl>();
 
-            ItemAgent_Gun gun = null; Transform muzzleTf = null;
+            ItemAgent_Gun gun = null;
+            Transform muzzleTf = null;
             if (shooterCMC && shooterCMC.characterModel)
             {
                 gun = shooterCMC.GetGun();
@@ -312,7 +327,7 @@ namespace EscapeFromDuckovCoopMod
             }
 
             // 生成起点（优先网络给的 muzzle，失败再用枪口/自身）
-            Vector3 spawnPos = muzzleTf ? muzzleTf.position : muzzle;
+            var spawnPos = muzzleTf ? muzzleTf.position : muzzle;
 
             // —— 先用主机载荷初始化 ctx（关键：包含 explosionRange / explosionDamage）——
             var ctx = new ProjectileContext
@@ -323,28 +338,37 @@ namespace EscapeFromDuckovCoopMod
                 halfDamageDistance = distance * 0.5f,
                 firstFrameCheck = true,
                 firstFrameCheckStartPoint = muzzle,
-                team = (shooterCMC && shooterCMC) ? shooterCMC.Team :
-                       (LevelManager.Instance?.MainCharacter ? LevelManager.Instance.MainCharacter.Team : Teams.player)
+                team = shooterCMC && shooterCMC ? shooterCMC.Team :
+                    LevelManager.Instance?.MainCharacter ? LevelManager.Instance.MainCharacter.Team : Teams.player
             };
 
-            bool gotPayload = (r.AvailableBytes > 0) && NetPack_Projectile.TryGetProjectilePayload(r, ref ctx);
+            var gotPayload = r.AvailableBytes > 0 && NetPack_Projectile.TryGetProjectilePayload(r, ref ctx);
 
             // —— 只有在“旧包/无载荷”的情况下，才用本地枪械做兜底推导 —— 
             if (!gotPayload && gun != null)
             {
-                bool hasBulletItem = false;
-                try { hasBulletItem = (gun.BulletItem != null); } catch { }
+                var hasBulletItem = false;
+                try
+                {
+                    hasBulletItem = gun.BulletItem != null;
+                }
+                catch
+                {
+                }
 
                 // 伤害
                 try
                 {
-                    float charMul = Mathf.Max(0.0001f, gun.CharacterDamageMultiplier);
-                    float bulletMul = hasBulletItem ? Mathf.Max(0.0001f, gun.BulletDamageMultiplier) : 1f;
-                    int shots = Mathf.Max(1, gun.ShotCount);
+                    var charMul = Mathf.Max(0.0001f, gun.CharacterDamageMultiplier);
+                    var bulletMul = hasBulletItem ? Mathf.Max(0.0001f, gun.BulletDamageMultiplier) : 1f;
+                    var shots = Mathf.Max(1, gun.ShotCount);
                     ctx.damage = gun.Damage * bulletMul * charMul / shots;
                     if (gun.Damage > 1f && ctx.damage < 1f) ctx.damage = 1f;
                 }
-                catch { if (ctx.damage <= 0f) ctx.damage = 1f; }
+                catch
+                {
+                    if (ctx.damage <= 0f) ctx.damage = 1f;
+                }
 
                 // 暴击
                 try
@@ -352,24 +376,27 @@ namespace EscapeFromDuckovCoopMod
                     ctx.critDamageFactor = (gun.CritDamageFactor + gun.BulletCritDamageFactorGain) * (1f + gun.CharacterGunCritDamageGain);
                     ctx.critRate = gun.CritRate * (1f + gun.CharacterGunCritRateGain + gun.bulletCritRateGain);
                 }
-                catch { }
+                catch
+                {
+                }
 
                 // 破甲
                 try
                 {
-                    float apGain = hasBulletItem ? gun.BulletArmorPiercingGain : 0f;
-                    float abGain = hasBulletItem ? gun.BulletArmorBreakGain : 0f;
+                    var apGain = hasBulletItem ? gun.BulletArmorPiercingGain : 0f;
+                    var abGain = hasBulletItem ? gun.BulletArmorBreakGain : 0f;
                     ctx.armorPiercing = gun.ArmorPiercing + apGain;
                     ctx.armorBreak = gun.ArmorBreak + abGain;
                 }
-                catch { }
+                catch
+                {
+                }
 
                 // 元素
                 try
                 {
                     var setting = gun.GunItemSetting;
                     if (setting != null)
-                    {
                         switch (setting.element)
                         {
                             case ElementTypes.physics: ctx.element_Physics = 1f; break;
@@ -378,9 +405,10 @@ namespace EscapeFromDuckovCoopMod
                             case ElementTypes.electricity: ctx.element_Electricity = 1f; break;
                             case ElementTypes.space: ctx.element_Space = 1f; break;
                         }
-                    }
                 }
-                catch { }
+                catch
+                {
+                }
 
                 // 状态 / 爆炸 / 穿透（注意：只有“无载荷”才从本地枪写入爆炸参数）
                 try
@@ -390,7 +418,8 @@ namespace EscapeFromDuckovCoopMod
                         ctx.buffChance = gun.BulletBuffChanceMultiplier * gun.BuffChance;
                         ctx.bleedChance = gun.BulletBleedChance;
                     }
-                    ctx.explosionRange = gun.BulletExplosionRange;                                // 注意!!!!← RPG 的关键
+
+                    ctx.explosionRange = gun.BulletExplosionRange; // 注意!!!!← RPG 的关键
                     ctx.explosionDamage = gun.BulletExplosionDamage * gun.ExplosionDamageMultiplier;
                     ctx.penetrate = gun.Penetrate;
 
@@ -409,23 +438,32 @@ namespace EscapeFromDuckovCoopMod
                     if (gun.Holder && gun.Holder.HasNearByHalfObsticle()) ctx.ignoreHalfObsticle = true;
                     if (ctx.critRate > 0.99f) ctx.ignoreHalfObsticle = true;
                 }
-                catch { }
+                catch
+                {
+                }
             }
 
             if (gotPayload && ctx.explosionRange <= 0f && gun != null)
-            {
                 try
                 {
                     ctx.explosionRange = gun.BulletExplosionRange;
                     ctx.explosionDamage = gun.BulletExplosionDamage * gun.ExplosionDamageMultiplier;
                 }
-                catch { }
-            }
+                catch
+                {
+                }
 
             // 生成弹丸（客户端只做可视；爆炸逻辑由 Projectile 基于 ctx.explosionRange>0 触发）
             Projectile pfb = null;
-            try { if (gun && gun.GunItemSetting && gun.GunItemSetting.bulletPfb) pfb = gun.GunItemSetting.bulletPfb; } catch { }
-            if (!pfb) pfb = Duckov.Utilities.GameplayDataSettings.Prefabs.DefaultBullet;
+            try
+            {
+                if (gun && gun.GunItemSetting && gun.GunItemSetting.bulletPfb) pfb = gun.GunItemSetting.bulletPfb;
+            }
+            catch
+            {
+            }
+
+            if (!pfb) pfb = GameplayDataSettings.Prefabs.DefaultBullet;
             if (!pfb) return;
 
             var proj = LevelManager.Instance.BulletPool.GetABullet(pfb);
@@ -439,15 +477,15 @@ namespace EscapeFromDuckovCoopMod
 
         public void HandleFireRequest(NetPeer peer, NetPacketReader r)
         {
-            string shooterId = r.GetString();
-            int weaponType = r.GetInt();
-            Vector3 muzzle = r.GetV3cm();
-            Vector3 baseDir = r.GetDir();
-            Vector3 firstCheckStart = r.GetV3cm();
+            var shooterId = r.GetString();
+            var weaponType = r.GetInt();
+            var muzzle = r.GetV3cm();
+            var baseDir = r.GetDir();
+            var firstCheckStart = r.GetV3cm();
 
             // === 新增：读取客户端这帧的散布 & ADS 提示 ===
-            float clientScatter = 0f;
-            float ads01 = 0f;
+            var clientScatter = 0f;
+            var ads01 = 0f;
             try
             {
                 clientScatter = r.GetFloat();
@@ -455,21 +493,25 @@ namespace EscapeFromDuckovCoopMod
             }
             catch
             {
-                clientScatter = 0f; ads01 = 0f; // 兼容老包
+                clientScatter = 0f;
+                ads01 = 0f; // 兼容老包
             }
 
             // 读取客户端随包提示载荷（可能不存在，Try 不会抛异常）
             _payloadHint = default;
             _hasPayloadHint = NetPack_Projectile.TryGetProjectilePayload(r, ref _payloadHint);
 
-            if (!remoteCharacters.TryGetValue(peer, out var who) || !who) { _hasPayloadHint = false; return; }
+            if (!remoteCharacters.TryGetValue(peer, out var who) || !who)
+            {
+                _hasPayloadHint = false;
+                return;
+            }
 
             var cm = who.GetComponent<CharacterMainControl>().characterModel;
 
             // —— 贪婪地查找远端玩家的枪 —— 
             ItemAgent_Gun gun = null;
             if (cm)
-            {
                 try
                 {
                     gun = who.GetComponent<CharacterMainControl>()?.GetGun();
@@ -477,8 +519,9 @@ namespace EscapeFromDuckovCoopMod
                     if (!gun && cm.LefthandSocket) gun = cm.LefthandSocket.GetComponentInChildren<ItemAgent_Gun>(true);
                     if (!gun && cm.MeleeWeaponSocket) gun = cm.MeleeWeaponSocket.GetComponentInChildren<ItemAgent_Gun>(true);
                 }
-                catch { }
-            }
+                catch
+                {
+                }
 
             // 找不到 muzzle 就从骨骼里兜底
             if (muzzle == default || muzzle.sqrMagnitude < 1e-8f)
@@ -490,6 +533,7 @@ namespace EscapeFromDuckovCoopMod
                     if (!mz && cm.LefthandSocket) mz = cm.LefthandSocket.Find("Muzzle");
                     if (!mz && cm.MeleeWeaponSocket) mz = cm.MeleeWeaponSocket.Find("Muzzle");
                 }
+
                 if (!mz) mz = who.transform.Find("Muzzle");
                 if (mz) muzzle = mz.position;
             }
@@ -501,7 +545,10 @@ namespace EscapeFromDuckovCoopMod
             if (gun) // 正常路径：主机生成真正的弹丸
             {
                 if (!Server_SpawnProjectile(gun, muzzle, baseDir, firstCheckStart, out finalDir, clientScatter, ads01))
-                { _hasPayloadHint = false; return; }
+                {
+                    _hasPayloadHint = false;
+                    return;
+                }
 
                 speed = gun.BulletSpeed * (gun.Holder ? gun.Holder.GunBulletSpeedMultiplier : 1f);
                 distance = gun.BulletDistance + 0.4f;
@@ -509,7 +556,7 @@ namespace EscapeFromDuckovCoopMod
             else
             {
                 // 没 gun 的可视兜底
-                finalDir = (baseDir.sqrMagnitude > 1e-8f ? baseDir.normalized : Vector3.forward);
+                finalDir = baseDir.sqrMagnitude > 1e-8f ? baseDir.normalized : Vector3.forward;
                 speed = _speedCacheByWeaponType.TryGetValue(weaponType, out var sp) ? sp : 60f;
                 distance = _distCacheByWeaponType.TryGetValue(weaponType, out var dist) ? dist : 50f;
                 // 可选：也可以在服务器生成一个“无 holder”的 Projectile（略）
@@ -528,43 +575,55 @@ namespace EscapeFromDuckovCoopMod
             var payloadCtx = new ProjectileContext();
             if (gun != null)
             {
-                bool hasBulletItem = false;
-                try { hasBulletItem = (gun.BulletItem != null); } catch { }
+                var hasBulletItem = false;
+                try
+                {
+                    hasBulletItem = gun.BulletItem != null;
+                }
+                catch
+                {
+                }
 
                 // …（保留你原有的 payload 构造，略）…
                 try
                 {
-                    float charMul = gun.CharacterDamageMultiplier;
-                    float bulletMul = hasBulletItem ? Mathf.Max(0.0001f, gun.BulletDamageMultiplier) : 1f;
-                    int shots = Mathf.Max(1, gun.ShotCount);
+                    var charMul = gun.CharacterDamageMultiplier;
+                    var bulletMul = hasBulletItem ? Mathf.Max(0.0001f, gun.BulletDamageMultiplier) : 1f;
+                    var shots = Mathf.Max(1, gun.ShotCount);
                     payloadCtx.damage = gun.Damage * bulletMul * charMul / shots;
                     if (gun.Damage > 1f && payloadCtx.damage < 1f) payloadCtx.damage = 1f;
                 }
-                catch { if (payloadCtx.damage <= 0f) payloadCtx.damage = 1f; }
+                catch
+                {
+                    if (payloadCtx.damage <= 0f) payloadCtx.damage = 1f;
+                }
 
                 try
                 {
-                    float bulletCritRateGain = hasBulletItem ? gun.bulletCritRateGain : 0f;
-                    float bulletCritDmgGain = hasBulletItem ? gun.BulletCritDamageFactorGain : 0f;
+                    var bulletCritRateGain = hasBulletItem ? gun.bulletCritRateGain : 0f;
+                    var bulletCritDmgGain = hasBulletItem ? gun.BulletCritDamageFactorGain : 0f;
                     payloadCtx.critDamageFactor = (gun.CritDamageFactor + bulletCritDmgGain) * (1f + gun.CharacterGunCritDamageGain);
                     payloadCtx.critRate = gun.CritRate * (1f + gun.CharacterGunCritRateGain + bulletCritRateGain);
                 }
-                catch { }
+                catch
+                {
+                }
 
                 try
                 {
-                    float apGain = hasBulletItem ? gun.BulletArmorPiercingGain : 0f;
-                    float abGain = hasBulletItem ? gun.BulletArmorBreakGain : 0f;
+                    var apGain = hasBulletItem ? gun.BulletArmorPiercingGain : 0f;
+                    var abGain = hasBulletItem ? gun.BulletArmorBreakGain : 0f;
                     payloadCtx.armorPiercing = gun.ArmorPiercing + apGain;
                     payloadCtx.armorBreak = gun.ArmorBreak + abGain;
                 }
-                catch { }
+                catch
+                {
+                }
 
                 try
                 {
                     var setting = gun.GunItemSetting;
                     if (setting != null)
-                    {
                         switch (setting.element)
                         {
                             case ElementTypes.physics: payloadCtx.element_Physics = 1f; break;
@@ -573,7 +632,6 @@ namespace EscapeFromDuckovCoopMod
                             case ElementTypes.electricity: payloadCtx.element_Electricity = 1f; break;
                             case ElementTypes.space: payloadCtx.element_Space = 1f; break;
                         }
-                    }
 
                     payloadCtx.explosionRange = gun.BulletExplosionRange;
                     payloadCtx.explosionDamage = gun.BulletExplosionDamage * gun.ExplosionDamageMultiplier;
@@ -585,9 +643,11 @@ namespace EscapeFromDuckovCoopMod
                     }
 
                     payloadCtx.penetrate = gun.Penetrate;
-                    payloadCtx.fromWeaponItemID = (gun.Item != null ? gun.Item.TypeID : 0);
+                    payloadCtx.fromWeaponItemID = gun.Item != null ? gun.Item.TypeID : 0;
                 }
-                catch { }
+                catch
+                {
+                }
             }
 
             writer.PutProjectilePayload(payloadCtx);
@@ -603,10 +663,9 @@ namespace EscapeFromDuckovCoopMod
         // 主机：收到客户端“近战起手”，播动作 + 强制挥空 FX（避免动画事件缺失）
         public void HandleMeleeAttackRequest(NetPeer sender, NetPacketReader reader)
         {
-
-            float delay = reader.GetFloat();
-            Vector3 pos = reader.GetV3cm();
-            Vector3 dir = reader.GetDir();
+            var delay = reader.GetFloat();
+            var pos = reader.GetV3cm();
+            var dir = reader.GetDir();
 
             if (remoteCharacters.TryGetValue(sender, out var who) && who)
             {
@@ -614,11 +673,12 @@ namespace EscapeFromDuckovCoopMod
                 if (anim != null) anim.OnAttack();
 
                 var model = who.GetComponent<CharacterMainControl>().characterModel;
-                if (model) EscapeFromDuckovCoopMod.MeleeFx.SpawnSlashFx(model);
+                if (model) MeleeFx.SpawnSlashFx(model);
             }
 
-            string pid = (playerStatuses.TryGetValue(sender, out var st) && !string.IsNullOrEmpty(st.EndPoint))
-                          ? st.EndPoint : sender.EndPoint.ToString();
+            var pid = playerStatuses.TryGetValue(sender, out var st) && !string.IsNullOrEmpty(st.EndPoint)
+                ? st.EndPoint
+                : sender.EndPoint.ToString();
             foreach (var p in netManager.ConnectedPeerList)
             {
                 if (p == sender) continue;
@@ -634,21 +694,21 @@ namespace EscapeFromDuckovCoopMod
         {
             Debug.Log($"[SERVER] HandleMeleeHitReport begin, from={sender?.EndPoint}, bytes={reader.AvailableBytes}");
 
-            string attackerId = reader.GetString();
+            var attackerId = reader.GetString();
 
-            float dmg = reader.GetFloat();
-            float ap = reader.GetFloat();
-            float cdf = reader.GetFloat();
-            float cr = reader.GetFloat();
-            int crit = reader.GetInt();
+            var dmg = reader.GetFloat();
+            var ap = reader.GetFloat();
+            var cdf = reader.GetFloat();
+            var cr = reader.GetFloat();
+            var crit = reader.GetInt();
 
-            Vector3 hitPoint = reader.GetV3cm();
-            Vector3 normal = reader.GetDir();
+            var hitPoint = reader.GetV3cm();
+            var normal = reader.GetDir();
 
-            int wid = reader.GetInt();
-            float bleed = reader.GetFloat();
-            bool boom = reader.GetBool();
-            float range = reader.GetFloat();
+            var wid = reader.GetInt();
+            var bleed = reader.GetFloat();
+            var boom = reader.GetBool();
+            var range = reader.GetFloat();
 
             if (!remoteCharacters.TryGetValue(sender, out var attackerGo) || !attackerGo)
             {
@@ -669,10 +729,10 @@ namespace EscapeFromDuckovCoopMod
 
             // —— 搜附近候选（包含 Trigger）——
             int mask = GameplayDataSettings.Layers.damageReceiverLayerMask;
-            float radius = Mathf.Clamp(range * 0.6f, 0.4f, 1.2f);
+            var radius = Mathf.Clamp(range * 0.6f, 0.4f, 1.2f);
 
-            Collider[] buf = new Collider[12];
-            int n = 0;
+            var buf = new Collider[12];
+            var n = 0;
             try
             {
                 n = Physics.OverlapSphereNonAlloc(hitPoint, radius, buf, mask, QueryTriggerInteraction.UseGlobal);
@@ -685,33 +745,37 @@ namespace EscapeFromDuckovCoopMod
             }
 
             DamageReceiver best = null;
-            float bestD2 = float.MaxValue;
+            var bestD2 = float.MaxValue;
 
-            for (int i = 0; i < n; i++)
+            for (var i = 0; i < n; i++)
             {
-                var col = buf[i]; if (!col) continue;
-                var dr = col.GetComponent<DamageReceiver>(); if (!dr) continue;
+                var col = buf[i];
+                if (!col) continue;
+                var dr = col.GetComponent<DamageReceiver>();
+                if (!dr) continue;
 
-                if (CoopTool.IsSelfDR(dr, attackerCtrl)) continue;                // 排自己
+                if (CoopTool.IsSelfDR(dr, attackerCtrl)) continue; // 排自己
                 if (CoopTool.IsCharacterDR(dr) && !Team.IsEnemy(dr.Team, attackerCtrl.Team)) continue; // 角色才做敌我判定
 
-                float d2 = (dr.transform.position - hitPoint).sqrMagnitude;
-                if (d2 < bestD2) { bestD2 = d2; best = dr; }
+                var d2 = (dr.transform.position - hitPoint).sqrMagnitude;
+                if (d2 < bestD2)
+                {
+                    bestD2 = d2;
+                    best = dr;
+                }
             }
 
             // 兜底：沿攻击方向短球扫
             if (!best)
             {
-                Vector3 dir = attackerCtrl.transform.forward;
-                Vector3 start = hitPoint - dir * 0.5f;
+                var dir = attackerCtrl.transform.forward;
+                var start = hitPoint - dir * 0.5f;
                 if (Physics.SphereCast(start, 0.3f, dir, out var hit, 1.5f, mask, QueryTriggerInteraction.UseGlobal))
                 {
                     var dr = hit.collider ? hit.collider.GetComponent<DamageReceiver>() : null;
                     if (dr != null && !CoopTool.IsSelfDR(dr, attackerCtrl))
-                    {
                         if (!CoopTool.IsCharacterDR(dr) || Team.IsEnemy(dr.Team, attackerCtrl.Team))
                             best = dr;
-                    }
                 }
             }
 
@@ -722,10 +786,10 @@ namespace EscapeFromDuckovCoopMod
             }
 
             // 目标类型区分（角色/环境）
-            bool victimIsChar = CoopTool.IsCharacterDR(best);
+            var victimIsChar = CoopTool.IsCharacterDR(best);
 
             // ★ 关键：环境/建筑用“空攻击者”避免二次缩放；角色保留攻击者
-            var attackerForDI = (victimIsChar || !ServerTuning.UseNullAttackerForEnv) ? attackerCtrl : null;
+            var attackerForDI = victimIsChar || !ServerTuning.UseNullAttackerForEnv ? attackerCtrl : null;
 
             var di = new DamageInfo(attackerForDI)
             {
@@ -741,21 +805,11 @@ namespace EscapeFromDuckovCoopMod
                 isExplosion = boom
             };
 
-            float scale = victimIsChar ? ServerTuning.RemoteMeleeCharScale : ServerTuning.RemoteMeleeEnvScale;
+            var scale = victimIsChar ? ServerTuning.RemoteMeleeCharScale : ServerTuning.RemoteMeleeEnvScale;
             if (Mathf.Abs(scale - 1f) > 1e-3f) di.damageValue = Mathf.Max(0f, di.damageValue * scale);
 
             Debug.Log($"[SERVER] melee hit -> target={best.name} raw={dmg} scaled={di.damageValue} env={!victimIsChar}");
             best.Hurt(di);
         }
-
-      
-
-
-
-
-
-
-
-
     }
 }

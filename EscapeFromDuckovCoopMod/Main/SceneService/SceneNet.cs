@@ -14,24 +14,55 @@
 // MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
 // GNU Affero General Public License for more details.
 
-﻿using Cysharp.Threading.Tasks;
+﻿using System;
+using System.Collections.Generic;
+using Cysharp.Threading.Tasks;
 using Duckov.UI;
 using HarmonyLib;
 using LiteNetLib;
 using LiteNetLib.Utils;
-using System;
-using System.Collections.Generic;
-using System.Linq;
-using System.Text;
-using System.Threading.Tasks;
 using UnityEngine;
 
 namespace EscapeFromDuckovCoopMod
 {
-    public class SceneNet:MonoBehaviour
+    public class SceneNet : MonoBehaviour
     {
-        private NetService Service => NetService.Instance;
         public static SceneNet Instance;
+        public string _sceneReadySidSent;
+        public bool sceneVoteActive;
+        public string sceneTargetId; // 统一的目标 SceneID
+        public string sceneCurtainGuid; // 过场 GUID，可为空
+        public bool sceneNotifyEvac;
+        public bool sceneSaveToFile = true;
+
+        public bool allowLocalSceneLoad;
+
+        public bool sceneUseLocation;
+        public string sceneLocationName;
+
+        public bool localReady;
+
+        //Scene Gate 等待进入地图系统 Wait join Map
+        public volatile bool _cliSceneGateReleased;
+        public string _cliGateSid;
+        public string _srvGateSid;
+        public bool IsMapSelectionEntry;
+
+        public readonly Dictionary<string, string> _cliLastSceneIdByPlayer = new Dictionary<string, string>();
+
+        // 记录已经“举手”的客户端（用 EndPoint 字符串，与现有 PlayerStatus 保持一致）
+        public readonly HashSet<string> _srvGateReadyPids = new HashSet<string>();
+
+        // 所有端都使用主机广播的这份参与者 pid 列表（关键：统一 pid）
+        public readonly List<string> sceneParticipantIds = new List<string>();
+
+        // 就绪表（key = 上面那个 pid）
+        public readonly Dictionary<string, bool> sceneReady = new Dictionary<string, bool>();
+        private float _cliGateDeadline;
+        private float _cliGateSeverDeadline;
+
+        private bool _srvSceneGateOpen;
+        private NetService Service => NetService.Instance;
 
         private bool IsServer => Service != null && Service.IsServer;
         private NetManager netManager => Service?.netManager;
@@ -43,35 +74,6 @@ namespace EscapeFromDuckovCoopMod
         private Dictionary<NetPeer, GameObject> remoteCharacters => Service?.remoteCharacters;
         private Dictionary<NetPeer, PlayerStatus> playerStatuses => Service?.playerStatuses;
         private Dictionary<string, GameObject> clientRemoteCharacters => Service?.clientRemoteCharacters;
-        public string _sceneReadySidSent;
-        public bool sceneVoteActive = false;
-        public string sceneTargetId = null;   // 统一的目标 SceneID
-        public string sceneCurtainGuid = null;   // 过场 GUID，可为空
-        public bool sceneNotifyEvac = false;
-        public bool sceneSaveToFile = true;
-
-        public bool allowLocalSceneLoad = false;
-        // 所有端都使用主机广播的这份参与者 pid 列表（关键：统一 pid）
-        public readonly List<string> sceneParticipantIds = new List<string>();
-        // 就绪表（key = 上面那个 pid）
-        public readonly Dictionary<string, bool> sceneReady = new Dictionary<string, bool>();
-
-        public bool sceneUseLocation = false;
-        public string sceneLocationName = null;
-        public readonly Dictionary<string, string> _cliLastSceneIdByPlayer = new Dictionary<string, string>();
-
-        public bool localReady = false;
-
-        //Scene Gate 等待进入地图系统 Wait join Map
-        public volatile bool _cliSceneGateReleased = false;
-        public string _cliGateSid = null;
-        private float _cliGateDeadline = 0f;
-        private float _cliGateSeverDeadline = 0f;
-
-        private bool _srvSceneGateOpen = false;
-        public string _srvGateSid = null;
-        // 记录已经“举手”的客户端（用 EndPoint 字符串，与现有 PlayerStatus 保持一致）
-        public readonly HashSet<string> _srvGateReadyPids = new HashSet<string>();
 
         public void Init()
         {
@@ -87,12 +89,12 @@ namespace EscapeFromDuckovCoopMod
             if (_sceneReadySidSent == sid) return; // 去抖：本场景只发一次
 
             var lm = LevelManager.Instance;
-            var pos = (lm && lm.MainCharacter) ? lm.MainCharacter.transform.position : Vector3.zero;
-            var rot = (lm && lm.MainCharacter) ? lm.MainCharacter.modelRoot.transform.rotation : Quaternion.identity;
+            var pos = lm && lm.MainCharacter ? lm.MainCharacter.transform.position : Vector3.zero;
+            var rot = lm && lm.MainCharacter ? lm.MainCharacter.modelRoot.transform.rotation : Quaternion.identity;
             var faceJson = CustomFace.LoadLocalCustomFaceJson() ?? string.Empty;
 
             writer.Reset();
-            writer.Put((byte)Op.SCENE_READY);    // 你的枚举里已有 23 = SCENE_READY
+            writer.Put((byte)Op.SCENE_READY); // 你的枚举里已有 23 = SCENE_READY
             writer.Put(localPlayerStatus?.EndPoint ?? (IsServer ? $"Host:{port}" : "Client:Unknown"));
             writer.Put(sid);
             writer.PutVector3(pos);
@@ -101,21 +103,16 @@ namespace EscapeFromDuckovCoopMod
 
 
             if (IsServer)
-            {
                 // 主机广播（本机也等同已就绪，方便让新进来的客户端看到主机）
                 netManager?.SendToAll(writer, DeliveryMethod.ReliableOrdered);
-            }
             else
-            {
                 connectedPeer?.Send(writer, DeliveryMethod.ReliableOrdered);
-            }
 
             _sceneReadySidSent = sid;
         }
 
         private void Server_BroadcastBeginSceneLoad()
         {
-
             if (Spectator.Instance._spectatorActive && Spectator.Instance._spectatorEndOnVotePending)
             {
                 Spectator.Instance._spectatorEndOnVotePending = false;
@@ -127,8 +124,8 @@ namespace EscapeFromDuckovCoopMod
             w.Put((byte)1); // ver=1
             w.Put(sceneTargetId ?? "");
 
-            bool hasCurtain = !string.IsNullOrEmpty(sceneCurtainGuid);
-            byte flags = PackFlag.PackFlags(hasCurtain, sceneUseLocation, sceneNotifyEvac, sceneSaveToFile);
+            var hasCurtain = !string.IsNullOrEmpty(sceneCurtainGuid);
+            var flags = PackFlag.PackFlags(hasCurtain, sceneUseLocation, sceneNotifyEvac, sceneSaveToFile);
             w.Put(flags);
 
             if (hasCurtain) w.Put(sceneCurtainGuid);
@@ -164,7 +161,7 @@ namespace EscapeFromDuckovCoopMod
             if (!IsServer) return;
 
             // 统一 pid（fromPeer==null 代表主机自己）
-            string pid = (fromPeer != null) ? NetService.Instance.GetPlayerId(fromPeer) : NetService.Instance.GetPlayerId(null);
+            var pid = fromPeer != null ? NetService.Instance.GetPlayerId(fromPeer) : NetService.Instance.GetPlayerId(null);
 
             if (!sceneVoteActive) return;
             if (!sceneReady.ContainsKey(pid)) return; // 不在这轮投票里，丢弃
@@ -180,7 +177,8 @@ namespace EscapeFromDuckovCoopMod
 
             // 检查是否全员准备
             foreach (var id in sceneParticipantIds)
-                if (!sceneReady.TryGetValue(id, out bool r) || !r) return;
+                if (!sceneReady.TryGetValue(id, out var r) || !r)
+                    return;
 
             // 全员就绪 → 开始加载
             Server_BroadcastBeginSceneLoad();
@@ -190,46 +188,85 @@ namespace EscapeFromDuckovCoopMod
         public void Client_OnSceneVoteStart(NetPacketReader r)
         {
             // ——读包：严格按顺序——
-            if (!EnsureAvailable(r, 2)) { Debug.LogWarning("[SCENE] vote: header too short"); return; }
-            byte ver = r.GetByte(); // switch 里已经吃掉了 op，这里是 ver
+            if (!EnsureAvailable(r, 2))
+            {
+                Debug.LogWarning("[SCENE] vote: header too short");
+                return;
+            }
+
+            var ver = r.GetByte(); // switch 里已经吃掉了 op，这里是 ver
             if (ver != 1 && ver != 2)
             {
                 Debug.LogWarning($"[SCENE] vote: unsupported ver={ver}");
                 return;
             }
 
-            if (!TryGetString(r, out sceneTargetId)) { Debug.LogWarning("[SCENE] vote: bad sceneId"); return; }
+            if (!TryGetString(r, out sceneTargetId))
+            {
+                Debug.LogWarning("[SCENE] vote: bad sceneId");
+                return;
+            }
 
-            if (!EnsureAvailable(r, 1)) { Debug.LogWarning("[SCENE] vote: no flags"); return; }
-            byte flags = r.GetByte();
+            if (!EnsureAvailable(r, 1))
+            {
+                Debug.LogWarning("[SCENE] vote: no flags");
+                return;
+            }
+
+            var flags = r.GetByte();
             bool hasCurtain, useLoc, notifyEvac, saveToFile;
             PackFlag.UnpackFlags(flags, out hasCurtain, out useLoc, out notifyEvac, out saveToFile);
 
             string curtainGuid = null;
             if (hasCurtain)
-            {
-                if (!TryGetString(r, out curtainGuid)) { Debug.LogWarning("[SCENE] vote: bad curtain"); return; }
-            }
+                if (!TryGetString(r, out curtainGuid))
+                {
+                    Debug.LogWarning("[SCENE] vote: bad curtain");
+                    return;
+                }
 
             string locName = null;
-            if (!TryGetString(r, out locName)) { Debug.LogWarning("[SCENE] vote: bad location"); return; }
+            if (!TryGetString(r, out locName))
+            {
+                Debug.LogWarning("[SCENE] vote: bad location");
+                return;
+            }
 
 
-            string hostSceneId = string.Empty;
+            var hostSceneId = string.Empty;
             if (ver >= 2)
             {
-                if (!TryGetString(r, out hostSceneId)) { Debug.LogWarning("[SCENE] vote: bad hostSceneId"); return; }
+                if (!TryGetString(r, out hostSceneId))
+                {
+                    Debug.LogWarning("[SCENE] vote: bad hostSceneId");
+                    return;
+                }
+
                 hostSceneId = hostSceneId ?? string.Empty;
             }
 
-            if (!EnsureAvailable(r, 4)) { Debug.LogWarning("[SCENE] vote: no count"); return; }
-            int cnt = r.GetInt();
-            if (cnt < 0 || cnt > 256) { Debug.LogWarning("[SCENE] vote: weird count"); return; }
+            if (!EnsureAvailable(r, 4))
+            {
+                Debug.LogWarning("[SCENE] vote: no count");
+                return;
+            }
+
+            var cnt = r.GetInt();
+            if (cnt < 0 || cnt > 256)
+            {
+                Debug.LogWarning("[SCENE] vote: weird count");
+                return;
+            }
 
             sceneParticipantIds.Clear();
-            for (int i = 0; i < cnt; i++)
+            for (var i = 0; i < cnt; i++)
             {
-                if (!TryGetString(r, out var pid)) { Debug.LogWarning($"[SCENE] vote: bad pid[{i}]"); return; }
+                if (!TryGetString(r, out var pid))
+                {
+                    Debug.LogWarning($"[SCENE] vote: bad pid[{i}]");
+                    return;
+                }
+
                 sceneParticipantIds.Add(pid ?? "");
             }
 
@@ -240,13 +277,11 @@ namespace EscapeFromDuckovCoopMod
 
             // A) 同图过滤（仅 v2 有 hostSceneId；v1 无法判断同图，用 B 兜底）
             if (!string.IsNullOrEmpty(hostSceneId) && !string.IsNullOrEmpty(mySceneId))
-            {
                 if (!string.Equals(hostSceneId, mySceneId, StringComparison.Ordinal))
                 {
                     Debug.Log($"[SCENE] vote: ignore (diff scene) host='{hostSceneId}' me='{mySceneId}'");
                     return;
                 }
-            }
 
             // B) 白名单过滤：不在参与名单，就不显示
             if (sceneParticipantIds.Count > 0 && localPlayerStatus != null)
@@ -278,35 +313,58 @@ namespace EscapeFromDuckovCoopMod
         }
 
 
-
-
         // ===== 客户端：收到“某人准备状态变更”（pid + ready）=====
         private void Client_OnSomeoneReadyChanged(NetPacketReader r)
         {
-            string pid = r.GetString();
-            bool rd = r.GetBool();
+            var pid = r.GetString();
+            var rd = r.GetBool();
             if (sceneReady.ContainsKey(pid)) sceneReady[pid] = rd;
         }
-        public bool IsMapSelectionEntry = false;
+
         public void Client_OnBeginSceneLoad(NetPacketReader r)
         {
-            if (!EnsureAvailable(r, 2)) { Debug.LogWarning("[SCENE] begin: header too short"); return; }
-            byte ver = r.GetByte();
-            if (ver != 1) { Debug.LogWarning($"[SCENE] begin: unsupported ver={ver}"); return; }
+            if (!EnsureAvailable(r, 2))
+            {
+                Debug.LogWarning("[SCENE] begin: header too short");
+                return;
+            }
 
-            if (!TryGetString(r, out var id)) { Debug.LogWarning("[SCENE] begin: bad sceneId"); return; }
+            var ver = r.GetByte();
+            if (ver != 1)
+            {
+                Debug.LogWarning($"[SCENE] begin: unsupported ver={ver}");
+                return;
+            }
 
-            if (!EnsureAvailable(r, 1)) { Debug.LogWarning("[SCENE] begin: no flags"); return; }
-            byte flags = r.GetByte();
+            if (!TryGetString(r, out var id))
+            {
+                Debug.LogWarning("[SCENE] begin: bad sceneId");
+                return;
+            }
+
+            if (!EnsureAvailable(r, 1))
+            {
+                Debug.LogWarning("[SCENE] begin: no flags");
+                return;
+            }
+
+            var flags = r.GetByte();
             bool hasCurtain, useLoc, notifyEvac, saveToFile;
             PackFlag.UnpackFlags(flags, out hasCurtain, out useLoc, out notifyEvac, out saveToFile);
 
             string curtainGuid = null;
             if (hasCurtain)
+                if (!TryGetString(r, out curtainGuid))
+                {
+                    Debug.LogWarning("[SCENE] begin: bad curtain");
+                    return;
+                }
+
+            if (!TryGetString(r, out var locName))
             {
-                if (!TryGetString(r, out curtainGuid)) { Debug.LogWarning("[SCENE] begin: bad curtain"); return; }
+                Debug.LogWarning("[SCENE] begin: bad locName");
+                return;
             }
-            if (!TryGetString(r, out var locName)) { Debug.LogWarning("[SCENE] begin: bad locName"); return; }
 
             allowLocalSceneLoad = true;
             var map = CoopTool.GetMapSelectionEntrylist(sceneTargetId);
@@ -346,19 +404,18 @@ namespace EscapeFromDuckovCoopMod
         }
 
         private void TryPerformSceneLoad_Local(string targetSceneId, string curtainGuid,
-                                         bool notifyEvac, bool save,
-                                         bool useLocation, string locationName)
+            bool notifyEvac, bool save,
+            bool useLocation, string locationName)
         {
             try
             {
                 var loader = SceneLoader.Instance;
-                bool launched = false;           // 是否已触发加载
+                var launched = false; // 是否已触发加载
 
                 // （如果后面你把 loader.LoadScene 恢复了，这里可以先试 loader 路径并把 launched=true）
 
                 // 无论 loader 是否存在，都尝试 SceneLoaderProxy 兜底
-                foreach (var ii in GameObject.FindObjectsOfType<SceneLoaderProxy>())
-                {
+                foreach (var ii in FindObjectsOfType<SceneLoaderProxy>())
                     try
                     {
                         if (Traverse.Create(ii).Field<string>("sceneID").Value == targetSceneId)
@@ -373,12 +430,8 @@ namespace EscapeFromDuckovCoopMod
                     {
                         Debug.LogWarning("[SCENE] proxy check failed: " + e);
                     }
-                }
 
-                if (!launched)
-                {
-                    Debug.LogWarning($"[SCENE] Local load fallback failed: no proxy for '{targetSceneId}'");
-                }
+                if (!launched) Debug.LogWarning($"[SCENE] Local load fallback failed: no proxy for '{targetSceneId}'");
             }
             catch (Exception e)
             {
@@ -402,15 +455,21 @@ namespace EscapeFromDuckovCoopMod
             // 1) 回给 fromPeer：同图的所有已知玩家
             foreach (var kv in SceneM._srvPeerScene)
             {
-                var other = kv.Key; if (other == fromPeer) continue;
+                var other = kv.Key;
+                if (other == fromPeer) continue;
                 if (kv.Value == sceneId)
                 {
                     // 取 other 的快照（尽量从 playerStatuses 或远端对象抓取）
-                    Vector3 opos = Vector3.zero; Quaternion orot = Quaternion.identity; string oface = "";
+                    var opos = Vector3.zero;
+                    var orot = Quaternion.identity;
+                    var oface = "";
                     if (playerStatuses.TryGetValue(other, out var s) && s != null)
                     {
-                        opos = s.Position; orot = s.Rotation; oface = s.CustomFaceJson ?? "";
+                        opos = s.Position;
+                        orot = s.Rotation;
+                        oface = s.CustomFaceJson ?? "";
                     }
+
                     var w = new NetDataWriter();
                     w.Put((byte)Op.REMOTE_CREATE);
                     w.Put(playerStatuses[other].EndPoint); // other 的 id
@@ -425,7 +484,8 @@ namespace EscapeFromDuckovCoopMod
             // 2) 广播给同图的其他人：创建 fromPeer
             foreach (var kv in SceneM._srvPeerScene)
             {
-                var other = kv.Key; if (other == fromPeer) continue;
+                var other = kv.Key;
+                if (other == fromPeer) continue;
                 if (kv.Value == sceneId)
                 {
                     var w = new NetDataWriter();
@@ -434,7 +494,8 @@ namespace EscapeFromDuckovCoopMod
                     w.Put(sceneId);
                     w.PutVector3(pos);
                     w.PutQuaternion(rot);
-                    string useFace = !string.IsNullOrEmpty(faceJson) ? faceJson : ((playerStatuses.TryGetValue(fromPeer, out var ss) && !string.IsNullOrEmpty(ss.CustomFaceJson)) ? ss.CustomFaceJson : "");
+                    var useFace = !string.IsNullOrEmpty(faceJson) ? faceJson :
+                        playerStatuses.TryGetValue(fromPeer, out var ss) && !string.IsNullOrEmpty(ss.CustomFaceJson) ? ss.CustomFaceJson : "";
                     w.Put(useFace);
                     other.Send(w, DeliveryMethod.ReliableOrdered);
                 }
@@ -443,7 +504,8 @@ namespace EscapeFromDuckovCoopMod
             // 3) 对不同图的人，互相 DESPAWN
             foreach (var kv in SceneM._srvPeerScene)
             {
-                var other = kv.Key; if (other == fromPeer) continue;
+                var other = kv.Key;
+                if (other == fromPeer) continue;
                 if (kv.Value != sceneId)
                 {
                     var w1 = new NetDataWriter();
@@ -459,17 +521,13 @@ namespace EscapeFromDuckovCoopMod
             }
 
             // 4) （可选）主机本地也显示客户端：在主机场景创建“该客户端”的远端克隆
-            if (remoteCharacters.TryGetValue(fromPeer, out var exists) == false || exists == null)
-            {
-               CreateRemoteCharacter.CreateRemoteCharacterAsync(fromPeer, pos, rot, faceJson).Forget();
-            }
-
-
+            if (!remoteCharacters.TryGetValue(fromPeer, out var exists) || exists == null)
+                CreateRemoteCharacter.CreateRemoteCharacterAsync(fromPeer, pos, rot, faceJson).Forget();
         }
 
         public void Host_BeginSceneVote_Simple(string targetSceneId, string curtainGuid,
-                                          bool notifyEvac, bool saveToFile,
-                                          bool useLocation, string locationName)
+            bool notifyEvac, bool saveToFile,
+            bool useLocation, string locationName)
         {
             sceneTargetId = targetSceneId ?? "";
             sceneCurtainGuid = string.IsNullOrEmpty(curtainGuid) ? null : curtainGuid;
@@ -497,12 +555,12 @@ namespace EscapeFromDuckovCoopMod
             w.Put((byte)2);
             w.Put(sceneTargetId);
 
-            bool hasCurtain = !string.IsNullOrEmpty(sceneCurtainGuid);
-            byte flags = PackFlag.PackFlags(hasCurtain, sceneUseLocation, sceneNotifyEvac, sceneSaveToFile);
+            var hasCurtain = !string.IsNullOrEmpty(sceneCurtainGuid);
+            var flags = PackFlag.PackFlags(hasCurtain, sceneUseLocation, sceneNotifyEvac, sceneSaveToFile);
             w.Put(flags);
 
             if (hasCurtain) w.Put(sceneCurtainGuid);
-            w.Put(sceneLocationName);       // 空串也写
+            w.Put(sceneLocationName); // 空串也写
             w.Put(hostSceneId);
 
             w.Put(sceneParticipantIds.Count);
@@ -542,9 +600,9 @@ namespace EscapeFromDuckovCoopMod
         }
 
         public void Client_RequestBeginSceneVote(
-      string targetId, string curtainGuid,
-      bool notifyEvac, bool saveToFile,
-      bool useLocation, string locationName)
+            string targetId, string curtainGuid,
+            bool notifyEvac, bool saveToFile,
+            bool useLocation, string locationName)
         {
             if (!networkStarted || IsServer || connectedPeer == null) return;
 
@@ -576,7 +634,7 @@ namespace EscapeFromDuckovCoopMod
 
                     await Client_SceneGateAsync();
                 }
-                catch (System.Exception e)
+                catch (Exception e)
                 {
                     Debug.LogError("[SCENE-GATE] " + e);
                 }
@@ -588,14 +646,14 @@ namespace EscapeFromDuckovCoopMod
             if (!networkStarted || IsServer) return;
 
             // 1) 等到握手建立（高性能机器上 StartInit 可能早于握手）
-            float connectDeadline = Time.realtimeSinceStartup + 8f;
+            var connectDeadline = Time.realtimeSinceStartup + 8f;
             while (connectedPeer == null && Time.realtimeSinceStartup < connectDeadline)
-                await Cysharp.Threading.Tasks.UniTask.Delay(100);
+                await UniTask.Delay(100);
 
             // 2) 重置释放标记
             _cliSceneGateReleased = false;
 
-            string sid = _cliGateSid;
+            var sid = _cliGateSid;
             if (string.IsNullOrEmpty(sid))
                 sid = TryGuessActiveSceneId();
             _cliGateSid = sid;
@@ -611,10 +669,10 @@ namespace EscapeFromDuckovCoopMod
             }
 
             // 5) 若此时仍未连上，后台短暂轮询直到拿到 peer 后补发 READY（最多再等 5s）
-            float retryDeadline = Time.realtimeSinceStartup + 5f;
+            var retryDeadline = Time.realtimeSinceStartup + 5f;
             while (connectedPeer == null && Time.realtimeSinceStartup < retryDeadline)
             {
-                await Cysharp.Threading.Tasks.UniTask.Delay(200);
+                await UniTask.Delay(200);
                 if (connectedPeer != null)
                 {
                     writer.Reset();
@@ -630,13 +688,26 @@ namespace EscapeFromDuckovCoopMod
 
             while (!_cliSceneGateReleased && Time.realtimeSinceStartup < _cliGateDeadline)
             {
-                try { SceneLoader.LoadingComment = "[Coop] 等待主机完成加载… (如迟迟没有进入等待100秒后自动进入)"; } catch { }
+                try
+                {
+                    SceneLoader.LoadingComment = "[Coop] 等待主机完成加载… (如迟迟没有进入等待100秒后自动进入)";
+                }
+                catch
+                {
+                }
+
                 await UniTask.Delay(100);
             }
 
 
             //Client_ReportSelfHealth_IfReadyOnce();
-            try { SceneLoader.LoadingComment = "主机已完成，正在进入…"; } catch { }
+            try
+            {
+                SceneLoader.LoadingComment = "主机已完成，正在进入…";
+            }
+            catch
+            {
+            }
         }
 
         // 主机：自身初始化完成 → 开门；已举手的立即放行；之后若有迟到的 READY，也会单放行
@@ -648,16 +719,12 @@ namespace EscapeFromDuckovCoopMod
             _srvSceneGateOpen = false;
             _cliGateSeverDeadline = Time.realtimeSinceStartup + 15f;
 
-            while (Time.realtimeSinceStartup < _cliGateSeverDeadline)
-            {
-                await UniTask.Delay(100);
-            }
+            while (Time.realtimeSinceStartup < _cliGateSeverDeadline) await UniTask.Delay(100);
 
             _srvSceneGateOpen = true;
 
             // 放行已经举手的所有客户端
             if (playerStatuses != null && playerStatuses.Count > 0)
-            {
                 foreach (var kv in playerStatuses)
                 {
                     var peer = kv.Key;
@@ -666,7 +733,6 @@ namespace EscapeFromDuckovCoopMod
                     if (_srvGateReadyPids.Contains(st.EndPoint))
                         Server_SendGateRelease(peer, _srvGateSid);
                 }
-            }
 
             // 主机不阻塞：之后若有 SCENE_GATE_READY 迟到，就在接收处即刻单独放行 目前不想去写也没啥毛病
         }
@@ -681,7 +747,6 @@ namespace EscapeFromDuckovCoopMod
         }
 
 
-
         private string TryGuessActiveSceneId()
         {
             return sceneTargetId;
@@ -690,17 +755,21 @@ namespace EscapeFromDuckovCoopMod
         // ——安全读取（调试期防止崩溃）——
         public static bool TryGetString(NetPacketReader r, out string s)
         {
-            try { s = r.GetString(); return true; } catch { s = null; return false; }
+            try
+            {
+                s = r.GetString();
+                return true;
+            }
+            catch
+            {
+                s = null;
+                return false;
+            }
         }
+
         public static bool EnsureAvailable(NetPacketReader r, int need)
         {
             return r.AvailableBytes >= need;
         }
-
-
-
-
-
-
     }
 }

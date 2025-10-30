@@ -14,15 +14,9 @@
 // MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
 // GNU Affero General Public License for more details.
 
-﻿using HarmonyLib;
-using ItemStatsSystem;
+﻿using System.Collections.Generic;
 using LiteNetLib;
 using LiteNetLib.Utils;
-using System;
-using System.Collections.Generic;
-using System.Linq;
-using System.Text;
-using System.Threading.Tasks;
 using UnityEngine;
 using static EscapeFromDuckovCoopMod.LootNet;
 
@@ -41,18 +35,23 @@ namespace EscapeFromDuckovCoopMod
         private Dictionary<NetPeer, GameObject> remoteCharacters => Service?.remoteCharacters;
         private Dictionary<NetPeer, PlayerStatus> playerStatuses => Service?.playerStatuses;
         private Dictionary<string, GameObject> clientRemoteCharacters => Service?.clientRemoteCharacters;
+
         public void Server_HandlePlayerDeadTree(Vector3 pos, Quaternion rot, ItemSnapshot snap)
         {
             if (!IsServer) return;
 
             var tmpRoot = ItemTool.BuildItemFromSnapshot(snap);
-            if (!tmpRoot) { Debug.LogWarning("[LOOT] HostDeath BuildItemFromSnapshot failed."); return; }
+            if (!tmpRoot)
+            {
+                Debug.LogWarning("[LOOT] HostDeath BuildItemFromSnapshot failed.");
+                return;
+            }
 
-            var deadPfb = LootManager.Instance.ResolveDeadLootPrefabOnServer();                     // → LootBoxPrefab_Tomb
-            var box = InteractableLootbox.CreateFromItem(tmpRoot, pos + Vector3.up * 0.10f, rot, true, deadPfb, false);
-            if (box) DeadLootBox.Instance.Server_OnDeadLootboxSpawned(box, null);                   // whoDied=null → aiId=0 → 客户端走“玩家坟碑盒”
+            var deadPfb = LootManager.Instance.ResolveDeadLootPrefabOnServer(); // → LootBoxPrefab_Tomb
+            var box = InteractableLootbox.CreateFromItem(tmpRoot, pos + Vector3.up * 0.10f, rot, true, deadPfb);
+            if (box) DeadLootBox.Instance.Server_OnDeadLootboxSpawned(box, null); // whoDied=null → aiId=0 → 客户端走“玩家坟碑盒”
 
-            if (tmpRoot && tmpRoot.gameObject) UnityEngine.Object.Destroy(tmpRoot.gameObject);
+            if (tmpRoot && tmpRoot.gameObject) Object.Destroy(tmpRoot.gameObject);
         }
 
         //  主机专用入口：本地构造一份与客户端打包一致的“物品树”
@@ -63,17 +62,10 @@ namespace EscapeFromDuckovCoopMod
             if (!item) return;
 
             var pos = who.transform.position;
-            var rot = (who.characterModel ? who.characterModel.transform.rotation : who.transform.rotation);
+            var rot = who.characterModel ? who.characterModel.transform.rotation : who.transform.rotation;
 
-            var snap = ItemTool.MakeSnapshot(item);                                     // 本地版“WriteItemSnapshot”
+            var snap = ItemTool.MakeSnapshot(item); // 本地版“WriteItemSnapshot”
             Server_HandlePlayerDeadTree(pos, rot, snap);
         }
-
-
-
-
-
-
-
     }
 }

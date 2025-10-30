@@ -20,36 +20,34 @@ namespace EscapeFromDuckovCoopMod
 {
     public sealed class NetAiFollower : MonoBehaviour
     {
-        Vector3 _pos, _dir;
-
-        CharacterMainControl _cmc;
-        CharacterModel _model;
-
-        CharacterAnimationControl _animctl;
-        CharacterAnimationControl_MagicBlend _magic;
-        Animator _anim;
-
         // 参数哈希（要与 MagicBlend 一致）
-        static readonly int hMoveSpeed = Animator.StringToHash("MoveSpeed");
-        static readonly int hMoveDirX = Animator.StringToHash("MoveDirX");
-        static readonly int hMoveDirY = Animator.StringToHash("MoveDirY");
-        static readonly int hHandState = Animator.StringToHash("HandState");
-        static readonly int hGunReady = Animator.StringToHash("GunReady");
-        static readonly int hDashing = Animator.StringToHash("Dashing");
+        private static readonly int hMoveSpeed = Animator.StringToHash("MoveSpeed");
+        private static readonly int hMoveDirX = Animator.StringToHash("MoveDirX");
+        private static readonly int hMoveDirY = Animator.StringToHash("MoveDirY");
+        private static readonly int hHandState = Animator.StringToHash("HandState");
+        private static readonly int hGunReady = Animator.StringToHash("GunReady");
+        private static readonly int hDashing = Animator.StringToHash("Dashing");
+        private Animator _anim;
 
-        // 目标状态（来自网络）
-        float _tSpeed, _tDirX, _tDirY;
-        int _tHand;
-        bool _tGunReady, _tDashing;
+        private CharacterAnimationControl _animctl;
+        private bool _cGunReady, _cDashing;
+        private int _cHand;
+
+        private CharacterMainControl _cmc;
 
         // 本地当前（用于平滑）
-        float _cSpeed, _cDirX, _cDirY;
-        int _cHand;
-        bool _cGunReady, _cDashing;
+        private float _cSpeed, _cDirX, _cDirY;
+        private CharacterAnimationControl_MagicBlend _magic;
+        private CharacterModel _model;
+        private Vector3 _pos, _dir;
+        private bool _tGunReady, _tDashing;
+        private int _tHand;
+
+        // 目标状态（来自网络）
+        private float _tSpeed, _tDirX, _tDirY;
 
 
-
-        void Awake()
+        private void Awake()
         {
             _cmc = GetComponentInParent<CharacterMainControl>(true);
 
@@ -60,56 +58,98 @@ namespace EscapeFromDuckovCoopMod
             }
 
             HookModel(_cmc ? _cmc.characterModel : null);
-            TryResolveAnimator(forceRebind: true);
+            TryResolveAnimator(true);
         }
 
-        void OnEnable()
+        private void Update()
+        {
+            if (_cmc == null) return;
+
+            // 自愈：Animator 丢失、或存在但未激活/未启用，都重抓
+            if (_anim == null || !_anim.isActiveAndEnabled || !_anim.gameObject.activeInHierarchy)
+            {
+                TryResolveAnimator(true);
+                if (_anim == null || !_anim.isActiveAndEnabled || !_anim.gameObject.activeInHierarchy) return;
+            }
+
+
+            // 平滑位置/朝向；旋转同时对齐到 cmc.modelRoot，避免身体和根节点错位
+            var t = transform;
+            t.position = Vector3.Lerp(t.position, _pos, Time.deltaTime * 20f);
+
+            var rotS = Quaternion.LookRotation(_dir, Vector3.up);
+            if (_cmc.modelRoot) _cmc.modelRoot.rotation = rotS;
+            t.rotation = rotS;
+
+            // 简单平滑，避免抖动
+            var lerp = 15f * Time.deltaTime; // ~15Hz 响应
+            _cSpeed = Mathf.Lerp(_cSpeed, _tSpeed, lerp);
+            _cDirX = Mathf.Lerp(_cDirX, _tDirX, lerp);
+            _cDirY = Mathf.Lerp(_cDirY, _tDirY, lerp);
+
+            _cHand = _tHand;
+            _cGunReady = _tGunReady;
+            _cDashing = _tDashing;
+
+            ApplyNow();
+        }
+
+        private void OnEnable()
         {
             // 距离激活/换壳后，立刻重绑 Animator
-            TryResolveAnimator(forceRebind: true);
+            TryResolveAnimator(true);
         }
 
 
-        void OnDestroy()
+        private void OnDestroy()
         {
             UnhookModel();
         }
 
-        void HookModel(CharacterModel m)
+        private void HookModel(CharacterModel m)
         {
             UnhookModel();
             _model = m;
             if (_model != null)
-            {
                 // 换壳后，CharacterModel 会触发 OnCharacterSetEvent
                 // 这里监听它来重绑 Animator / MagicBlend
-                try { _model.OnCharacterSetEvent += OnModelSet; } catch { }
-            }
+                try
+                {
+                    _model.OnCharacterSetEvent += OnModelSet;
+                }
+                catch
+                {
+                }
         }
 
-        void UnhookModel()
+        private void UnhookModel()
         {
             if (_model != null)
-            {
-                try { _model.OnCharacterSetEvent -= OnModelSet; } catch { }
-            }
+                try
+                {
+                    _model.OnCharacterSetEvent -= OnModelSet;
+                }
+                catch
+                {
+                }
+
             _model = null;
         }
 
-        void OnModelSet()
+        private void OnModelSet()
         {
             // 换壳已完成，cmc.characterModel 已指向新模型（见 SetCharacterModel 实现）
             HookModel(_cmc ? _cmc.characterModel : null);
-            TryResolveAnimator(forceRebind: true);
+            TryResolveAnimator(true);
         }
 
         public void ForceRebindAfterModelSwap()
         {
             HookModel(_cmc ? _cmc.characterModel : null);
-            TryResolveAnimator(forceRebind: true);
+            TryResolveAnimator(true);
         }
 
-        void TryResolveAnimator(bool forceRebind = false)
+        private void TryResolveAnimator(bool forceRebind = false)
         {
             _magic = null;
             _anim = null;
@@ -118,7 +158,6 @@ namespace EscapeFromDuckovCoopMod
             // 1) 优先在“当前模型子树”里找：先找 MagicBlend / CharacterAnimationControl 自带的 animator
             var model = _cmc ? _cmc.characterModel : null;
             if (model != null)
-            {
                 try
                 {
                     // 严格匹配：MagicBlend/CharAnimCtrl 组件挂在“当前 characterModel”下面
@@ -127,14 +166,12 @@ namespace EscapeFromDuckovCoopMod
                     {
                         if (!m) continue;
                         if ((m.characterModel == null || m.characterModel == model) && m.animator)
-                        {
                             if (m.animator.isActiveAndEnabled && m.animator.gameObject.activeInHierarchy)
                             {
                                 _magic = m;
                                 _anim = m.animator;
                                 break;
                             }
-                        }
                     }
 
                     if (_anim == null)
@@ -144,14 +181,12 @@ namespace EscapeFromDuckovCoopMod
                         {
                             if (!c) continue;
                             if ((c.characterModel == null || c.characterModel == model) && c.animator)
-                            {
                                 if (c.animator.isActiveAndEnabled && c.animator.gameObject.activeInHierarchy)
                                 {
                                     _animctl = c;
                                     _anim = c.animator;
                                     break;
                                 }
-                            }
                         }
                     }
 
@@ -170,8 +205,9 @@ namespace EscapeFromDuckovCoopMod
                         }
                     }
                 }
-                catch { }
-            }
+                catch
+                {
+                }
 
             // 整棵对象（不局限于当前 model），先找 MagicBlend/CharAnimCtrl 的 animator
             if (_anim == null)
@@ -185,10 +221,11 @@ namespace EscapeFromDuckovCoopMod
                         _anim = m.animator;
                     }
                 }
-                catch { }
+                catch
+                {
+                }
 
                 if (_anim == null)
-                {
                     try
                     {
                         var c = GetComponentInChildren<CharacterAnimationControl>(true);
@@ -198,13 +235,13 @@ namespace EscapeFromDuckovCoopMod
                             _anim = c.animator;
                         }
                     }
-                    catch { }
-                }
+                    catch
+                    {
+                    }
             }
 
             // 整棵对象随便找一个可用的 Animator
             if (_anim == null)
-            {
                 try
                 {
                     var anims = GetComponentsInChildren<Animator>(true);
@@ -218,8 +255,9 @@ namespace EscapeFromDuckovCoopMod
                         }
                     }
                 }
-                catch { }
-            }
+                catch
+                {
+                }
 
             // 找到了就设置基本属性 & 可选 Rebind lol
             if (_anim != null)
@@ -228,9 +266,14 @@ namespace EscapeFromDuckovCoopMod
                 _anim.updateMode = AnimatorUpdateMode.Normal;
                 _anim.applyRootMotion = false; // 避免根运动与网络位移打架
                 if (forceRebind)
-                {
-                    try { _anim.Rebind(); _anim.Update(0f); } catch { }
-                }
+                    try
+                    {
+                        _anim.Rebind();
+                        _anim.Update(0f);
+                    }
+                    catch
+                    {
+                    }
             }
         }
 
@@ -240,39 +283,6 @@ namespace EscapeFromDuckovCoopMod
         {
             _pos = pos;
             _dir = dir;
-        }
-
-        void Update()
-        {
-            if (_cmc == null) return;
-
-            // 自愈：Animator 丢失、或存在但未激活/未启用，都重抓
-            if (_anim == null || !_anim.isActiveAndEnabled || !_anim.gameObject.activeInHierarchy)
-            {
-                TryResolveAnimator(forceRebind: true);
-                if (_anim == null || !_anim.isActiveAndEnabled || !_anim.gameObject.activeInHierarchy) return;
-            }
-
-
-            // 平滑位置/朝向；旋转同时对齐到 cmc.modelRoot，避免身体和根节点错位
-            var t = transform;
-            t.position = Vector3.Lerp(t.position, _pos, Time.deltaTime * 20f);
-
-            var rotS = Quaternion.LookRotation(_dir, Vector3.up);
-            if (_cmc.modelRoot) _cmc.modelRoot.rotation = rotS;
-            t.rotation = rotS;
-
-            // 简单平滑，避免抖动
-            float lerp = 15f * Time.deltaTime; // ~15Hz 响应
-            _cSpeed = Mathf.Lerp(_cSpeed, _tSpeed, lerp);
-            _cDirX = Mathf.Lerp(_cDirX, _tDirX, lerp);
-            _cDirY = Mathf.Lerp(_cDirY, _tDirY, lerp);
-
-            _cHand = _tHand;
-            _cGunReady = _tGunReady;
-            _cDashing = _tDashing;
-
-            ApplyNow();
         }
 
         public void SetAnim(float speed, float dirX, float dirY, int hand, bool gunReady, bool dashing)
@@ -287,13 +297,17 @@ namespace EscapeFromDuckovCoopMod
             // 首帧立刻对齐，避免卡一帧
             if (_anim && _cHand == 0 && _cSpeed == 0f && _cDirX == 0f && _cDirY == 0f)
             {
-                _cSpeed = _tSpeed; _cDirX = _tDirX; _cDirY = _tDirY;
-                _cHand = _tHand; _cGunReady = _tGunReady; _cDashing = _tDashing;
+                _cSpeed = _tSpeed;
+                _cDirX = _tDirX;
+                _cDirY = _tDirY;
+                _cHand = _tHand;
+                _cGunReady = _tGunReady;
+                _cDashing = _tDashing;
                 ApplyNow();
             }
         }
 
-        void ApplyNow()
+        private void ApplyNow()
         {
             if (!_anim) return;
             _anim.SetFloat(hMoveSpeed, _cSpeed);
@@ -310,15 +324,5 @@ namespace EscapeFromDuckovCoopMod
             if (_magic != null) _magic.OnAttack();
             if (_animctl != null) _animctl.OnAttack();
         }
-
-
-
-
-
-
-
-
-
     }
-
 }

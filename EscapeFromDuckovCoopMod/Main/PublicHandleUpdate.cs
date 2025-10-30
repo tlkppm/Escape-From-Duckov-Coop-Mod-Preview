@@ -14,14 +14,10 @@
 // MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
 // GNU Affero General Public License for more details.
 
-﻿using Cysharp.Threading.Tasks;
+﻿using System.Collections.Generic;
+using Cysharp.Threading.Tasks;
 using LiteNetLib;
 using LiteNetLib.Utils;
-using System;
-using System.Collections.Generic;
-using System.Linq;
-using System.Text;
-using System.Threading.Tasks;
 using UnityEngine;
 
 namespace EscapeFromDuckovCoopMod
@@ -39,13 +35,14 @@ namespace EscapeFromDuckovCoopMod
         private Dictionary<NetPeer, GameObject> remoteCharacters => Service?.remoteCharacters;
         private Dictionary<NetPeer, PlayerStatus> playerStatuses => Service?.playerStatuses;
         private Dictionary<string, GameObject> clientRemoteCharacters => Service?.clientRemoteCharacters;
+
         public void HandleEquipmentUpdate(NetPeer sender, NetPacketReader reader)
         {
-            string endPoint = reader.GetString();
-            int slotHash = reader.GetInt();
-            string itemId = reader.GetString();
+            var endPoint = reader.GetString();
+            var slotHash = reader.GetInt();
+            var itemId = reader.GetString();
 
-           COOPManager.HostPlayer_Apply.ApplyEquipmentUpdate(sender, slotHash, itemId).Forget();
+            COOPManager.HostPlayer_Apply.ApplyEquipmentUpdate(sender, slotHash, itemId).Forget();
 
             foreach (var p in netManager.ConnectedPeerList)
             {
@@ -57,15 +54,14 @@ namespace EscapeFromDuckovCoopMod
                 w.Put(itemId);
                 p.Send(w, DeliveryMethod.ReliableOrdered);
             }
-
         }
 
 
         public void HandleWeaponUpdate(NetPeer sender, NetPacketReader reader)
         {
-            string endPoint = reader.GetString();
-            int slotHash = reader.GetInt();
-            string itemId = reader.GetString();
+            var endPoint = reader.GetString();
+            var slotHash = reader.GetInt();
+            var itemId = reader.GetString();
 
             COOPManager.HostPlayer_Apply.ApplyWeaponUpdate(sender, slotHash, itemId).Forget();
 
@@ -79,26 +75,25 @@ namespace EscapeFromDuckovCoopMod
                 w.Put(itemId);
                 p.Send(w, DeliveryMethod.ReliableOrdered);
             }
-
         }
 
         // 主机接收客户端动画，并转发给其他客户端（携带来源玩家ID）
         public void HandleClientAnimationStatus(NetPeer sender, NetPacketReader reader)
         {
-            float moveSpeed = reader.GetFloat();
-            float moveDirX = reader.GetFloat();
-            float moveDirY = reader.GetFloat();
-            bool isDashing = reader.GetBool();
-            bool isAttacking = reader.GetBool();
-            int handState = reader.GetInt();
-            bool gunReady = reader.GetBool();
-            int stateHash = reader.GetInt();
-            float normTime = reader.GetFloat();
+            var moveSpeed = reader.GetFloat();
+            var moveDirX = reader.GetFloat();
+            var moveDirY = reader.GetFloat();
+            var isDashing = reader.GetBool();
+            var isAttacking = reader.GetBool();
+            var handState = reader.GetInt();
+            var gunReady = reader.GetBool();
+            var stateHash = reader.GetInt();
+            var normTime = reader.GetFloat();
 
             // 主机本地（用 NetPeer）
             HandleRemoteAnimationStatus(sender, moveSpeed, moveDirX, moveDirY, isDashing, isAttacking, handState, gunReady, stateHash, normTime);
 
-            string playerId = playerStatuses.TryGetValue(sender, out var st) && !string.IsNullOrEmpty(st.EndPoint)
+            var playerId = playerStatuses.TryGetValue(sender, out var st) && !string.IsNullOrEmpty(st.EndPoint)
                 ? st.EndPoint
                 : sender.EndPoint.ToString();
 
@@ -106,7 +101,7 @@ namespace EscapeFromDuckovCoopMod
             {
                 if (p == sender) continue;
                 var w = new NetDataWriter();
-                w.Put((byte)Op.ANIM_SYNC);           //  改动：用 opcode
+                w.Put((byte)Op.ANIM_SYNC); //  改动：用 opcode
                 w.Put(playerId);
                 w.Put(moveSpeed);
                 w.Put(moveDirX);
@@ -119,13 +114,12 @@ namespace EscapeFromDuckovCoopMod
                 w.Put(normTime);
                 p.Send(w, DeliveryMethod.Sequenced);
             }
-
         }
 
         // 主机侧：按 NetPeer 应用动画
-        void HandleRemoteAnimationStatus(NetPeer peer, float moveSpeed, float moveDirX, float moveDirY,
-                                  bool isDashing, bool isAttacking, int handState, bool gunReady,
-                                  int stateHash, float normTime)
+        private void HandleRemoteAnimationStatus(NetPeer peer, float moveSpeed, float moveDirX, float moveDirY,
+            bool isDashing, bool isAttacking, int handState, bool gunReady,
+            int stateHash, float normTime)
         {
             if (!remoteCharacters.TryGetValue(peer, out var remoteObj) || remoteObj == null) return;
 
@@ -142,15 +136,14 @@ namespace EscapeFromDuckovCoopMod
                 stateHash = stateHash,
                 normTime = normTime
             });
-
         }
 
         public void HandlePositionUpdate(NetPeer sender, NetPacketReader reader)
         {
-            string endPoint = reader.GetString();
-            Vector3 position = reader.GetV3cm(); // ← 统一
-            Vector3 dir = reader.GetDir();
-            Quaternion rotation = Quaternion.LookRotation(dir, Vector3.up);
+            var endPoint = reader.GetString();
+            var position = reader.GetV3cm(); // ← 统一
+            var dir = reader.GetDir();
+            var rotation = Quaternion.LookRotation(dir, Vector3.up);
 
             foreach (var p in netManager.ConnectedPeerList)
             {
@@ -158,8 +151,8 @@ namespace EscapeFromDuckovCoopMod
                 var w = new NetDataWriter();
                 w.Put((byte)Op.POSITION_UPDATE);
                 w.Put(endPoint);
-                NetPack.PutV3cm(w, position);     // ← 统一
-                NetPack.PutDir(w, dir);
+                w.PutV3cm(position); // ← 统一
+                w.PutDir(dir);
                 p.Send(w, DeliveryMethod.Unreliable);
             }
         }
@@ -185,23 +178,11 @@ namespace EscapeFromDuckovCoopMod
                     writer.Put((byte)Op.POSITION_UPDATE);
                     writer.Put(st.EndPoint ?? endPoint);
                     writer.PutV3cm(position);
-                    Vector3 fwd = rotation * Vector3.forward;
+                    var fwd = rotation * Vector3.forward;
                     writer.PutDir(fwd);
                     p.Send(writer, DeliveryMethod.Unreliable);
                 }
             }
         }
-
-
-
- 
-
-
-
-
-
-
-
-
     }
 }

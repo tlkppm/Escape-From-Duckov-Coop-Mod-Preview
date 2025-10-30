@@ -14,16 +14,20 @@
 // MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
 // GNU Affero General Public License for more details.
 
-﻿using HarmonyLib;
-using System;
+﻿using System;
+using Duckov.UI;
+using Duckov.Utilities;
+using HarmonyLib;
+using TMPro;
 using UnityEngine;
+using UnityEngine.UI;
 
 namespace EscapeFromDuckovCoopMod
 {
     [HarmonyPatch(typeof(HealthSimpleBase), "Awake")]
     public static class Patch_HSB_Awake_TagRegister
     {
-        static void Postfix(HealthSimpleBase __instance)
+        private static void Postfix(HealthSimpleBase __instance)
         {
             if (!__instance) return;
 
@@ -31,37 +35,35 @@ namespace EscapeFromDuckovCoopMod
             if (!tag) return; // 你已标注在墙/油桶上了，这里不再 AddComponent
 
             // —— BreakableWall：用墙根节点来计算稳定ID，避免主客机层级差导致错位 —— //
-            Transform wallRoot = FindBreakableWallRoot(__instance.transform);
+            var wallRoot = FindBreakableWallRoot(__instance.transform);
             if (wallRoot != null)
-            {
                 try
                 {
-                    uint computed = NetDestructibleTag.ComputeStableId(wallRoot.gameObject);
+                    var computed = NetDestructibleTag.ComputeStableId(wallRoot.gameObject);
                     if (tag.id != computed) tag.id = computed;
                 }
-                catch { }
-            }
+                catch
+                {
+                }
 
             // —— 幂等注册 —— //
-            var mod = EscapeFromDuckovCoopMod.ModBehaviourF.Instance;
-            if (mod != null)
-            {
-                COOPManager.destructible.RegisterDestructible(tag.id, __instance);
-            }
+            var mod = ModBehaviourF.Instance;
+            if (mod != null) COOPManager.destructible.RegisterDestructible(tag.id, __instance);
         }
 
         // 向上找名字含“BreakableWall”的祖先（不区分大小写）
-        static Transform FindBreakableWallRoot(Transform t)
+        private static Transform FindBreakableWallRoot(Transform t)
         {
             var p = t;
             while (p != null)
             {
-                string nm = p.name;
+                var nm = p.name;
                 if (!string.IsNullOrEmpty(nm) &&
                     nm.IndexOf("BreakableWall", StringComparison.OrdinalIgnoreCase) >= 0)
                     return p;
                 p = p.parent;
             }
+
             return null;
         }
     }
@@ -71,26 +73,26 @@ namespace EscapeFromDuckovCoopMod
     [HarmonyPatch(typeof(HealthSimpleBase), "OnHurt")]
     public static class Patch_HSB_OnHurt_RedirectNet
     {
-        static bool Prefix(HealthSimpleBase __instance, DamageInfo dmgInfo)
+        private static bool Prefix(HealthSimpleBase __instance, DamageInfo dmgInfo)
         {
             var mod = ModBehaviourF.Instance;
             if (mod == null || !mod.networkStarted) return true;
 
             if (!mod.IsServer)
             {
-
                 // 本地 UI：子弹/爆炸统一点亮 Hit；若你能在此处判断“必死”，可传 true 亮 Kill
-                LocalHitKillFx.ClientPlayForDestructible(__instance, dmgInfo, predictedDead: false);
+                LocalHitKillFx.ClientPlayForDestructible(__instance, dmgInfo, false);
 
                 var tag = __instance.GetComponent<NetDestructibleTag>();
                 if (!tag) tag = __instance.gameObject.AddComponent<NetDestructibleTag>();
                 COOPManager.HurtM.Client_RequestDestructibleHurt(tag.id, dmgInfo);
                 return false;
             }
+
             return true;
         }
 
-        static void Postfix(HealthSimpleBase __instance, DamageInfo dmgInfo)
+        private static void Postfix(HealthSimpleBase __instance, DamageInfo dmgInfo)
         {
             var mod = ModBehaviourF.Instance;
             if (mod == null || !mod.networkStarted || !mod.IsServer) return;
@@ -105,7 +107,7 @@ namespace EscapeFromDuckovCoopMod
     [HarmonyPatch(typeof(HealthSimpleBase), "Dead")]
     public static class Patch_HSB_Dead_Broadcast
     {
-        static void Postfix(HealthSimpleBase __instance, DamageInfo dmgInfo)
+        private static void Postfix(HealthSimpleBase __instance, DamageInfo dmgInfo)
         {
             var mod = ModBehaviourF.Instance;
             if (mod == null || !mod.networkStarted || !mod.IsServer) return;
@@ -118,15 +120,23 @@ namespace EscapeFromDuckovCoopMod
 
     // 回血/设血：主机也要广播（治疗、药效、脚本设血等）
     [HarmonyPatch(typeof(Health), "SetHealth")]
-    static class Patch_AIHealth_SetHealth_Broadcast
+    internal static class Patch_AIHealth_SetHealth_Broadcast
     {
-        static void Postfix(Health __instance, float healthValue)
+        private static void Postfix(Health __instance, float healthValue)
         {
-            var mod = ModBehaviourF .Instance;
+            var mod = ModBehaviourF.Instance;
             if (mod == null || !mod.networkStarted || !mod.IsServer) return;
 
             var cmc = __instance.TryGetCharacter();
-            if (!cmc) { try { cmc = __instance.GetComponentInParent<CharacterMainControl>(); } catch { } }
+            if (!cmc)
+                try
+                {
+                    cmc = __instance.GetComponentInParent<CharacterMainControl>();
+                }
+                catch
+                {
+                }
+
             if (!cmc || !cmc.GetComponent<NetAiTag>()) return;
 
             var tag = cmc.GetComponent<NetAiTag>();
@@ -138,15 +148,23 @@ namespace EscapeFromDuckovCoopMod
     }
 
     [HarmonyPatch(typeof(Health), "AddHealth")]
-    static class Patch_AIHealth_AddHealth_Broadcast
+    internal static class Patch_AIHealth_AddHealth_Broadcast
     {
-        static void Postfix(Health __instance, float healthValue)
+        private static void Postfix(Health __instance, float healthValue)
         {
             var mod = ModBehaviourF.Instance;
             if (mod == null || !mod.networkStarted || !mod.IsServer) return;
 
             var cmc = __instance.TryGetCharacter();
-            if (!cmc) { try { cmc = __instance.GetComponentInParent<CharacterMainControl>(); } catch { } }
+            if (!cmc)
+                try
+                {
+                    cmc = __instance.GetComponentInParent<CharacterMainControl>();
+                }
+                catch
+                {
+                }
+
             if (!cmc || !cmc.GetComponent<NetAiTag>()) return;
 
             var tag = cmc.GetComponent<NetAiTag>();
@@ -157,10 +175,10 @@ namespace EscapeFromDuckovCoopMod
         }
     }
 
-    [HarmonyPatch(typeof(Duckov.UI.HealthBar), "RefreshCharacterIcon")]
-    static class Patch_HealthBar_RefreshCharacterIcon_Override
+    [HarmonyPatch(typeof(HealthBar), "RefreshCharacterIcon")]
+    internal static class Patch_HealthBar_RefreshCharacterIcon_Override
     {
-        static void Postfix(Duckov.UI.HealthBar __instance)
+        private static void Postfix(HealthBar __instance)
         {
             try
             {
@@ -174,15 +192,15 @@ namespace EscapeFromDuckovCoopMod
                 if (!tag) return;
 
                 // 若没有任何覆写数据，就不动原版结果
-                bool hasIcon = tag.iconTypeOverride.HasValue;
-                bool hasShow = tag.showNameOverride.HasValue;
-                bool hasName = !string.IsNullOrEmpty(tag.nameOverride);
+                var hasIcon = tag.iconTypeOverride.HasValue;
+                var hasShow = tag.showNameOverride.HasValue;
+                var hasName = !string.IsNullOrEmpty(tag.nameOverride);
                 if (!hasIcon && !hasShow && !hasName) return;
 
                 // 取到 UI 私有字段
                 var tr = Traverse.Create(__instance);
-                var levelIcon = tr.Field<UnityEngine.UI.Image>("levelIcon").Value;
-                var nameText = tr.Field<TMPro.TextMeshProUGUI>("nameText").Value;
+                var levelIcon = tr.Field<Image>("levelIcon").Value;
+                var nameText = tr.Field<TextMeshProUGUI>("nameText").Value;
 
                 // 1) 图标覆写（有就用，没有就保留原版）
                 if (levelIcon && hasIcon)
@@ -200,7 +218,7 @@ namespace EscapeFromDuckovCoopMod
                 }
 
                 // 2) 名字显隐与文本（主机裁决优先；boss/elete 兜底强制显示）
-                bool show = hasShow ? tag.showNameOverride.Value : (cmc.characterPreset ? cmc.characterPreset.showName : false);
+                var show = hasShow ? tag.showNameOverride.Value : cmc.characterPreset ? cmc.characterPreset.showName : false;
                 if (tag.iconTypeOverride.HasValue)
                 {
                     var t = (CharacterIconTypes)tag.iconTypeOverride.Value;
@@ -221,69 +239,73 @@ namespace EscapeFromDuckovCoopMod
                     }
                 }
             }
-            catch { /* 防守式：别让UI崩 */ }
+            catch
+            {
+                /* 防守式：别让UI崩 */
+            }
         }
 
         // 拷一份兼容的解析函数（避免跨文件访问）
-        static Sprite ResolveIconSpriteCompat(int iconType)
+        private static Sprite ResolveIconSpriteCompat(int iconType)
         {
             switch ((CharacterIconTypes)iconType)
             {
-                case CharacterIconTypes.elete: return Duckov.Utilities.GameplayDataSettings.UIStyle.EleteCharacterIcon;
-                case CharacterIconTypes.pmc: return Duckov.Utilities.GameplayDataSettings.UIStyle.PmcCharacterIcon;
-                case CharacterIconTypes.boss: return Duckov.Utilities.GameplayDataSettings.UIStyle.BossCharacterIcon;
-                case CharacterIconTypes.merchant: return Duckov.Utilities.GameplayDataSettings.UIStyle.MerchantCharacterIcon;
-                case CharacterIconTypes.pet: return Duckov.Utilities.GameplayDataSettings.UIStyle.PetCharacterIcon;
+                case CharacterIconTypes.elete: return GameplayDataSettings.UIStyle.EleteCharacterIcon;
+                case CharacterIconTypes.pmc: return GameplayDataSettings.UIStyle.PmcCharacterIcon;
+                case CharacterIconTypes.boss: return GameplayDataSettings.UIStyle.BossCharacterIcon;
+                case CharacterIconTypes.merchant: return GameplayDataSettings.UIStyle.MerchantCharacterIcon;
+                case CharacterIconTypes.pet: return GameplayDataSettings.UIStyle.PetCharacterIcon;
                 default: return null;
             }
         }
     }
 
     [HarmonyPatch(typeof(Health), "get_MaxHealth")]
-    static class Patch_Health_get_MaxHealth_ClientOverride
+    internal static class Patch_Health_get_MaxHealth_ClientOverride
     {
-        static void Postfix(Health __instance, ref float __result)
+        private static void Postfix(Health __instance, ref float __result)
         {
             var mod = ModBehaviourF.Instance;
             if (mod == null || mod.IsServer) return;
 
             // 只给 AI 覆盖（避免动到玩家自身的本地 UI）
             var cmc = __instance.TryGetCharacter();
-            bool isAI = cmc && (cmc.GetComponent<AICharacterController>() != null || cmc.GetComponent<NetAiTag>() != null);
+            var isAI = cmc && (cmc.GetComponent<AICharacterController>() != null || cmc.GetComponent<NetAiTag>() != null);
             if (!isAI) return;
 
             if (HealthM.Instance.TryGetClientMaxOverride(__instance, out var v) && v > 0f)
-            {
-                if (__result <= 0f || v > __result) __result = v;
-            }
+                if (__result <= 0f || v > __result)
+                    __result = v;
         }
     }
 
 
     [HarmonyPatch(typeof(HealthSimpleBase), "OnHurt")]
-    static class Patch_HealthSimpleBase_OnHurt_RedirectNet
+    internal static class Patch_HealthSimpleBase_OnHurt_RedirectNet
     {
-        static bool Prefix(HealthSimpleBase __instance, ref global::DamageInfo __0)
+        private static bool Prefix(HealthSimpleBase __instance, ref DamageInfo __0)
         {
-            var mod = EscapeFromDuckovCoopMod.ModBehaviourF.Instance;
+            var mod = ModBehaviourF.Instance;
             if (mod == null || !mod.networkStarted) return true;
 
             // 必须是本机玩家的命中才拦截；防止 AI 打障碍物也触发 UI
             var from = __0.fromCharacter;
-            bool fromLocalMain = (from == global::CharacterMainControl.Main);
+            var fromLocalMain = from == CharacterMainControl.Main;
 
             if (!mod.IsServer && fromLocalMain)
             {
                 // 预测是否致死（简单用 HealthValue 判断，足够做“演出预判”）
-                bool predictedDead = false;
+                var predictedDead = false;
                 try
                 {
-                    float cur = __instance.HealthValue;
-                    predictedDead = (cur > 0f && __0.damageValue >= cur - 0.001f);
+                    var cur = __instance.HealthValue;
+                    predictedDead = cur > 0f && __0.damageValue >= cur - 0.001f;
                 }
-                catch { }
+                catch
+                {
+                }
 
-                EscapeFromDuckovCoopMod.LocalHitKillFx.ClientPlayForDestructible(__instance, __0, predictedDead);
+                LocalHitKillFx.ClientPlayForDestructible(__instance, __0, predictedDead);
 
                 // 继续你的原有逻辑：把命中发给主机权威结算
                 return false;
@@ -295,13 +317,13 @@ namespace EscapeFromDuckovCoopMod
 
     // 统一给所有可破坏体（HealthSimpleBase）打上 NetDestructibleTag 并注册进索引
     [HarmonyPatch(typeof(HealthSimpleBase), "Awake")]
-    static class Patch_HSB_Awake_AddTagAndRegister
+    internal static class Patch_HSB_Awake_AddTagAndRegister
     {
-        static void Postfix(HealthSimpleBase __instance)
+        private static void Postfix(HealthSimpleBase __instance)
         {
             try
             {
-                var mod = ModBehaviourF .Instance;
+                var mod = ModBehaviourF.Instance;
                 if (mod == null) return;
 
                 // 没有就补一个
@@ -315,7 +337,10 @@ namespace EscapeFromDuckovCoopMod
                     // 你已有的稳定ID算法在 Mod.cs 里；这里直接复用 NetDestructibleTag 的稳定计算兜底
                     id = NetDestructibleTag.ComputeStableId(__instance.gameObject);
                 }
-                catch { /* 忽略差异 */ }
+                catch
+                {
+                    /* 忽略差异 */
+                }
 
                 tag.id = id;
                 COOPManager.destructible.RegisterDestructible(id, __instance);
@@ -329,20 +354,34 @@ namespace EscapeFromDuckovCoopMod
 
 
     [HarmonyPatch(typeof(Health), "DestroyOnDelay")]
-    static class Patch_Health_DestroyOnDelay_SkipForAI_Server
+    internal static class Patch_Health_DestroyOnDelay_SkipForAI_Server
     {
-        static bool Prefix(Health __instance)
+        private static bool Prefix(Health __instance)
         {
-            var mod = EscapeFromDuckovCoopMod.ModBehaviourF.Instance;
+            var mod = ModBehaviourF.Instance;
             if (mod == null || !mod.networkStarted || !mod.IsServer) return true;
 
             CharacterMainControl cmc = null;
-            try { cmc = __instance.TryGetCharacter(); } catch { }
-            if (!cmc) { try { cmc = __instance.GetComponentInParent<CharacterMainControl>(); } catch { } }
+            try
+            {
+                cmc = __instance.TryGetCharacter();
+            }
+            catch
+            {
+            }
 
-            bool isAI = cmc &&
-                        (cmc.GetComponent<AICharacterController>() != null ||
-                         cmc.GetComponent<NetAiTag>() != null);
+            if (!cmc)
+                try
+                {
+                    cmc = __instance.GetComponentInParent<CharacterMainControl>();
+                }
+                catch
+                {
+                }
+
+            var isAI = cmc &&
+                       (cmc.GetComponent<AICharacterController>() != null ||
+                        cmc.GetComponent<NetAiTag>() != null);
             if (!isAI) return true;
 
             // 对 AI：主机不再走原 DestroyOnDelay，避免已销毁对象的后续访问导致 NRE
@@ -352,9 +391,9 @@ namespace EscapeFromDuckovCoopMod
 
     // 兜底：即使有第三方路径仍触发 DestroyOnDelay，吞掉异常防止打断主循环（可选）
     [HarmonyPatch(typeof(Health), "DestroyOnDelay")]
-    static class Patch_Health_DestroyOnDelay_Finalizer
+    internal static class Patch_Health_DestroyOnDelay_Finalizer
     {
-        static Exception Finalizer(Exception __exception)
+        private static Exception Finalizer(Exception __exception)
         {
             // 返回 null 表示吞掉异常
             if (__exception != null)
@@ -362,11 +401,4 @@ namespace EscapeFromDuckovCoopMod
             return null;
         }
     }
-
-
-
-
-
-
-
 }

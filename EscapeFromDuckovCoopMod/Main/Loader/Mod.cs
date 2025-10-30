@@ -14,28 +14,26 @@
 // MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
 // GNU Affero General Public License for more details.
 
-﻿using Cysharp.Threading.Tasks;
+﻿using System.Collections.Generic;
+using System.Linq;
+using Cysharp.Threading.Tasks;
 using Duckov.UI;
 using HarmonyLib;
 using ItemStatsSystem;
 using ItemStatsSystem.Items;
 using LiteNetLib;
 using LiteNetLib.Utils;
-using System.Collections.Generic;
-using System.Linq;
 using UnityEngine;
 using UnityEngine.SceneManagement;
 using static EscapeFromDuckovCoopMod.LootNet;
-using Object = UnityEngine.Object;
 
 namespace EscapeFromDuckovCoopMod
 {
-
-    static class ServerTuning
+    internal static class ServerTuning
     {
         // 远端近战伤害倍率（按需调整）
-        public const float RemoteMeleeCharScale = 1.00f;  // 打角色：保持原汁原味
-        public const float RemoteMeleeEnvScale = 1.5f;  // 打环境：稍微抬一点
+        public const float RemoteMeleeCharScale = 1.00f; // 打角色：保持原汁原味
+        public const float RemoteMeleeEnvScale = 1.5f; // 打环境：稍微抬一点
 
         // 打环境/建筑时，用 null 作为“攻击者”，避免基于攻击者的二次系数让伤害被稀释
         public const bool UseNullAttackerForEnv = true;
@@ -45,7 +43,89 @@ namespace EscapeFromDuckovCoopMod
     // ===== 本人无意在此堆，只是开始想要管理好的，后来懒的开新的类了导致这个类不堪重负维护有一点点小复杂 2025/10/27 =====
     public class ModBehaviourF : MonoBehaviour
     {
+        private const float SELF_ACCEPT_WINDOW = 0.30f;
+        private const float EnsureRemoteInterval = 1.0f; // 每秒兜底一次，够用又不吵
+        private const float ENV_SYNC_INTERVAL = 1.0f; // 每 1 秒广播一次；可按需 0.5~2 调
+        private const float AI_TF_INTERVAL = 0.05f;
+        private const float AI_ANIM_INTERVAL = 0.10f; // 10Hz 动画参数广播
+        private const float AI_NAMEICON_INTERVAL = 10f;
+
+        private const float SELF_MUTE_SEC = 0.10f;
         public static ModBehaviourF Instance; //一切的开始 Hello World!
+
+        public static CustomFaceSettingData localPlayerCustomFace;
+
+        public static bool LogAiHpDebug = false; // 需要时改为 true，打印 [AI-HP] 日志
+
+        public static bool LogAiLoadoutDebug = true;
+
+        // --- 反编译类的私有序列化字段直达句柄---
+        private static readonly AccessTools.FieldRef<CharacterRandomPreset, bool>
+            FR_UsePlayerPreset = AccessTools.FieldRefAccess<CharacterRandomPreset, bool>("usePlayerPreset");
+
+        private static readonly AccessTools.FieldRef<CharacterRandomPreset, CustomFacePreset>
+            FR_FacePreset = AccessTools.FieldRefAccess<CharacterRandomPreset, CustomFacePreset>("facePreset");
+
+        private static readonly AccessTools.FieldRef<CharacterRandomPreset, CharacterModel>
+            FR_CharacterModel = AccessTools.FieldRefAccess<CharacterRandomPreset, CharacterModel>("characterModel");
+
+        private static readonly AccessTools.FieldRef<CharacterRandomPreset, CharacterIconTypes>
+            FR_IconType = AccessTools.FieldRefAccess<CharacterRandomPreset, CharacterIconTypes>("characterIconType");
+
+        public static readonly Dictionary<int, Pending> map = new Dictionary<int, Pending>();
+
+        private static Transform _fallbackMuzzleAnchor;
+        public float broadcastTimer;
+        public float syncTimer;
+
+        public bool Pausebool;
+        public int _clientLootSetupDepth;
+
+        public GameObject aiTelegraphFx;
+        public DamageInfo _lastDeathInfo;
+
+
+        // 客户端：是否把远端 AI 全部常显（默认 true）
+        public bool Client_ForceShowAllRemoteAI = true;
+
+
+        // 客户端：远端玩家待应用的外观缓存
+        private readonly Dictionary<string, string> _cliPendingFace = new Dictionary<string, string>();
+
+        // 发送去抖：只有发生明显改动才发，避免带宽爆炸
+        private readonly Dictionary<int, (Vector3 pos, Vector3 dir)> _lastAiSent = new Dictionary<int, (Vector3 pos, Vector3 dir)>();
+
+        // 待绑定时的暂存（客户端）
+        private readonly Dictionary<int, AiAnimState> _pendingAiAnims = new Dictionary<int, AiAnimState>();
+
+        private readonly Queue<(int id, Vector3 p, Vector3 f)> _pendingAiTrans = new Queue<(int id, Vector3 p, Vector3 f)>();
+
+        private readonly Dictionary<int, (int capacity, List<(int pos, ItemSnapshot snap)>)> _pendingLootStates
+            = new Dictionary<int, (int, List<(int, ItemSnapshot)>)>();
+
+        private readonly KeyCode readyKey = KeyCode.J;
+
+        // 主机端的节流定时器
+        private float _aiAnimTimer;
+
+        private float _aiNameIconTimer;
+
+        private float _aiTfTimer;
+
+        private float _ensureRemoteTick = 0f;
+        private bool _envReqOnce = false;
+        private string _envReqSid;
+
+        private float _envSyncTimer;
+
+
+        private int _spectateIdx = -1;
+        private float _spectateNextSwitchTime;
+
+
+        private bool isinit; // 判断玩家装备slot监听初始哈的
+
+        private bool isinit2;
         private NetService Service => NetService.Instance;
         public bool IsServer => Service != null && Service.IsServer;
         public NetManager netManager => Service?.netManager;
@@ -60,177 +140,46 @@ namespace EscapeFromDuckovCoopMod
         public string manualPort => Service?.manualPort;
         public string status => Service?.status;
         public int port => Service?.port ?? 0;
-        public float broadcastTimer = 0f;
         public float broadcastInterval => Service?.broadcastInterval ?? 5f;
-        public float syncTimer = 0f;
         public float syncInterval => Service?.syncInterval ?? 0.015f; // =========== Mod开发者注意现在是TI版本也就是满血版无同步延迟，0.03 ~33ms ===================
 
         public Dictionary<NetPeer, GameObject> remoteCharacters => Service?.remoteCharacters;
         public Dictionary<NetPeer, PlayerStatus> playerStatuses => Service?.playerStatuses;
         public Dictionary<string, GameObject> clientRemoteCharacters => Service?.clientRemoteCharacters;
         public Dictionary<string, PlayerStatus> clientPlayerStatuses => Service?.clientPlayerStatuses;
-
-        public bool Pausebool;
-
-
-
-        private bool isinit; // 判断玩家装备slot监听初始哈的
-
-        public static CustomFaceSettingData localPlayerCustomFace;
-     
-        private bool isinit2;
-        private string _envReqSid;
-
-        const float SELF_ACCEPT_WINDOW = 0.30f;
-
-        private readonly KeyCode readyKey = KeyCode.J;
-
-        private float _ensureRemoteTick = 0f;
-        private const float EnsureRemoteInterval = 1.0f; // 每秒兜底一次，够用又不吵
- 
-        private float _envSyncTimer = 0f;
-        private const float ENV_SYNC_INTERVAL = 1.0f; // 每 1 秒广播一次；可按需 0.5~2 调
-        private bool _envReqOnce = false; 
-        public int _clientLootSetupDepth = 0;
         public bool ClientLootSetupActive => networkStarted && !IsServer && _clientLootSetupDepth > 0;
-
-        private float _aiTfTimer;
-        private const float AI_TF_INTERVAL = 0.05f;
-
-        // 发送去抖：只有发生明显改动才发，避免带宽爆炸
-        private readonly Dictionary<int, (Vector3 pos, Vector3 dir)> _lastAiSent = new Dictionary<int, (Vector3 pos, Vector3 dir)>();
-     
-        readonly Queue<(int id, Vector3 p, Vector3 f)> _pendingAiTrans = new Queue<(int id, Vector3 p, Vector3 f)>();
-
-        // 待绑定时的暂存（客户端）
-        private readonly Dictionary<int, AiAnimState> _pendingAiAnims = new Dictionary<int, AiAnimState>();
-
-        // 主机端的节流定时器
-        private float _aiAnimTimer = 0f;
-        private const float AI_ANIM_INTERVAL = 0.10f; // 10Hz 动画参数广播
-
-        public GameObject aiTelegraphFx;
-
-        public static bool LogAiHpDebug = false; // 需要时改为 true，打印 [AI-HP] 日志
-
-        private float _aiNameIconTimer = 0f;
-        private const float AI_NAMEICON_INTERVAL = 10f;
-
-        public static bool LogAiLoadoutDebug = true;
-
-        // --- 反编译类的私有序列化字段直达句柄---
-        static readonly AccessTools.FieldRef<CharacterRandomPreset, bool>
-            FR_UsePlayerPreset = AccessTools.FieldRefAccess<CharacterRandomPreset, bool>("usePlayerPreset");
-        static readonly AccessTools.FieldRef<CharacterRandomPreset, CustomFacePreset>
-            FR_FacePreset = AccessTools.FieldRefAccess<CharacterRandomPreset, CustomFacePreset>("facePreset");
-        static readonly AccessTools.FieldRef<CharacterRandomPreset, CharacterModel>
-            FR_CharacterModel = AccessTools.FieldRefAccess<CharacterRandomPreset, CharacterModel>("characterModel");
-        static readonly AccessTools.FieldRef<CharacterRandomPreset, global::CharacterIconTypes>
-            FR_IconType = AccessTools.FieldRefAccess<CharacterRandomPreset, global::CharacterIconTypes>("characterIconType");
-
-        private readonly Dictionary<int, (int capacity, List<(int pos, ItemSnapshot snap)>)> _pendingLootStates
-        = new Dictionary<int, (int, List<(int, ItemSnapshot)>)>();
 
         // —— 工具：对外暴露两个只读状态 —— //
         public bool IsClient => networkStarted && !IsServer;
 
-        const float SELF_MUTE_SEC = 0.10f;
+        //全局变量地狱的结束
 
-        public struct Pending
+
+        private void Awake()
         {
-            public Inventory inv;
-            public int srcPos;
-            public int count;
-        }
-
-        public static readonly Dictionary<int, Pending> map = new Dictionary<int, Pending>();
-
-
-        // 客户端：远端玩家待应用的外观缓存
-        private readonly Dictionary<string, string> _cliPendingFace = new Dictionary<string, string>();
-
-        
-        private int _spectateIdx = -1;
-        private float _spectateNextSwitchTime = 0f;
-        public global::DamageInfo _lastDeathInfo;
- 
-        static Transform _fallbackMuzzleAnchor;
-
-       //全局变量地狱的结束
-
-
-        void Awake()
-        {            
             Debug.Log("ModBehaviour Awake");
             Instance = this;
-           
         }
 
-
-        private void OnEnable()
+        private void Update()
         {
-            SceneManager.sceneLoaded += OnSceneLoaded_IndexDestructibles;
-            LevelManager.OnAfterLevelInitialized += LevelManager_OnAfterLevelInitialized; 
-            LevelManager.OnLevelInitialized += OnLevelInitialized_IndexDestructibles;
-
-
-            SceneManager.sceneLoaded += SceneManager_sceneLoaded;
-            LevelManager.OnLevelInitialized += LevelManager_OnLevelInitialized;
-           
-        }
-
-        private void LevelManager_OnAfterLevelInitialized()
-        {
-            if (IsServer && networkStarted)
-                SceneNet.Instance.Server_SceneGateAsync().Forget();
-        }
-
-        private void LevelManager_OnLevelInitialized()
-        {
-
-            AITool.ResetAiSerials();
-            if(!IsServer) HealthM.Instance.Client_ReportSelfHealth_IfReadyOnce();
-            SceneNet.Instance.TrySendSceneReadyOnce();
-            if (!IsServer) COOPManager.Weather.Client_RequestEnvSync();
-
-            if (IsServer) COOPManager.AIHandle.Server_SendAiSeeds();
-            AIName.Client_ResetNameIconSeal_OnLevelInit();
-
-        }
-        //arg!!!!!!!!!!!
-        private void SceneManager_sceneLoaded(Scene arg0, LoadSceneMode arg1)
-        {
-            SceneNet.Instance.TrySendSceneReadyOnce();
-            if (!IsServer) COOPManager.Weather.Client_RequestEnvSync();
-
-        }
-
-        void OnDisable()
-        {
-            SceneManager.sceneLoaded -= OnSceneLoaded_IndexDestructibles;
-            LevelManager.OnLevelInitialized -= OnLevelInitialized_IndexDestructibles;
-         //   LevelManager.OnAfterLevelInitialized -= _OnAfterLevelInitialized_ServerGate;
-
-            SceneManager.sceneLoaded -= SceneManager_sceneLoaded;
-            LevelManager.OnLevelInitialized -= LevelManager_OnLevelInitialized;
-        }
-
-        void Update()
-        {
-
             if (CharacterMainControl.Main != null && !isinit)
             {
                 isinit = true;
-                Traverse.Create(CharacterMainControl.Main.EquipmentController).Field<Slot>("armorSlot").Value.onSlotContentChanged += LoaclPlayerManager.Instance.ModBehaviour_onSlotContentChanged;
-                Traverse.Create(CharacterMainControl.Main.EquipmentController).Field<Slot>("helmatSlot").Value.onSlotContentChanged += LoaclPlayerManager.Instance.ModBehaviour_onSlotContentChanged;
-                Traverse.Create(CharacterMainControl.Main.EquipmentController).Field<Slot>("faceMaskSlot").Value.onSlotContentChanged += LoaclPlayerManager.Instance.ModBehaviour_onSlotContentChanged;
-                Traverse.Create(CharacterMainControl.Main.EquipmentController).Field<Slot>("backpackSlot").Value.onSlotContentChanged += LoaclPlayerManager.Instance.ModBehaviour_onSlotContentChanged;
-                Traverse.Create(CharacterMainControl.Main.EquipmentController).Field<Slot>("headsetSlot").Value.onSlotContentChanged += LoaclPlayerManager.Instance.ModBehaviour_onSlotContentChanged;
+                Traverse.Create(CharacterMainControl.Main.EquipmentController).Field<Slot>("armorSlot").Value.onSlotContentChanged +=
+                    LoaclPlayerManager.Instance.ModBehaviour_onSlotContentChanged;
+                Traverse.Create(CharacterMainControl.Main.EquipmentController).Field<Slot>("helmatSlot").Value.onSlotContentChanged +=
+                    LoaclPlayerManager.Instance.ModBehaviour_onSlotContentChanged;
+                Traverse.Create(CharacterMainControl.Main.EquipmentController).Field<Slot>("faceMaskSlot").Value.onSlotContentChanged +=
+                    LoaclPlayerManager.Instance.ModBehaviour_onSlotContentChanged;
+                Traverse.Create(CharacterMainControl.Main.EquipmentController).Field<Slot>("backpackSlot").Value.onSlotContentChanged +=
+                    LoaclPlayerManager.Instance.ModBehaviour_onSlotContentChanged;
+                Traverse.Create(CharacterMainControl.Main.EquipmentController).Field<Slot>("headsetSlot").Value.onSlotContentChanged +=
+                    LoaclPlayerManager.Instance.ModBehaviour_onSlotContentChanged;
 
-                CharacterMainControl.Main.OnHoldAgentChanged +=  LoaclPlayerManager.Instance.Main_OnHoldAgentChanged;
+                CharacterMainControl.Main.OnHoldAgentChanged += LoaclPlayerManager.Instance.Main_OnHoldAgentChanged;
             }
 
-          
 
             //暂停显示出鼠标
             if (Pausebool)
@@ -239,15 +188,9 @@ namespace EscapeFromDuckovCoopMod
                 Cursor.lockState = CursorLockMode.None;
             }
 
-            if (CharacterMainControl.Main == null)
-            {
-                isinit = false;
-            }
+            if (CharacterMainControl.Main == null) isinit = false;
 
-            if (Input.GetKeyDown(KeyCode.Home))
-            {
-               ModUI.Instance.showUI = !ModUI.Instance.showUI;
-            }
+            if (Input.GetKeyDown(KeyCode.Home)) ModUI.Instance.showUI = !ModUI.Instance.showUI;
 
             if (networkStarted)
             {
@@ -259,14 +202,14 @@ namespace EscapeFromDuckovCoopMod
                     if (!IsServer) HealthM.Instance.Client_ReportSelfHealth_IfReadyOnce();
                 }
 
-               // if (IsServer) Server_EnsureAllHealthHooks();
+                // if (IsServer) Server_EnsureAllHealthHooks();
 
                 if (!IsServer && !isConnecting)
                 {
                     broadcastTimer += Time.deltaTime;
                     if (broadcastTimer >= broadcastInterval)
                     {
-                       CoopTool.SendBroadcastDiscovery();
+                        CoopTool.SendBroadcastDiscovery();
                         broadcastTimer = 0f;
                     }
                 }
@@ -297,8 +240,8 @@ namespace EscapeFromDuckovCoopMod
 
                 if (!IsServer && !string.IsNullOrEmpty(SceneNet.Instance._sceneReadySidSent) && _envReqSid != SceneNet.Instance._sceneReadySidSent)
                 {
-                    _envReqSid = SceneNet.Instance._sceneReadySidSent;   // 本场景只请求一次
-                     COOPManager.Weather.Client_RequestEnvSync();           // 向主机要时间/天气快照
+                    _envReqSid = SceneNet.Instance._sceneReadySidSent; // 本场景只请求一次
+                    COOPManager.Weather.Client_RequestEnvSync(); // 向主机要时间/天气快照
                 }
 
                 if (IsServer)
@@ -310,15 +253,15 @@ namespace EscapeFromDuckovCoopMod
 
                         foreach (var kv in AITool.aiById)
                         {
-                            int id = kv.Key;
+                            var id = kv.Key;
                             var cmc = kv.Value;
                             if (!cmc) continue;
 
                             var pr = cmc.characterPreset;
                             if (!pr) continue;
 
-                            int iconType = 0;
-                            bool showName = false;
+                            var iconType = 0;
+                            var showName = false;
                             try
                             {
                                 iconType = (int)FR_IconType(pr);
@@ -327,11 +270,13 @@ namespace EscapeFromDuckovCoopMod
                                 if (iconType == 0 && pr.GetCharacterIcon() != null)
                                     iconType = (int)FR_IconType(pr);
                             }
-                            catch { }
+                            catch
+                            {
+                            }
 
                             // 只给“有图标 or 需要显示名字”的 AI 发
                             if (iconType != 0 || showName)
-                               AIName.Server_BroadcastAiNameIcon(id, cmc);
+                                AIName.Server_BroadcastAiNameIcon(id, cmc);
                         }
                     }
                 }
@@ -343,25 +288,23 @@ namespace EscapeFromDuckovCoopMod
                     if (_envSyncTimer >= ENV_SYNC_INTERVAL)
                     {
                         _envSyncTimer = 0f;
-                       COOPManager.Weather.Server_BroadcastEnvSync();
+                        COOPManager.Weather.Server_BroadcastEnvSync();
                     }
 
                     _aiAnimTimer += Time.deltaTime;
                     if (_aiAnimTimer >= AI_ANIM_INTERVAL)
                     {
                         _aiAnimTimer = 0f;
-                       COOPManager.AIHandle.Server_BroadcastAiAnimations();
+                        COOPManager.AIHandle.Server_BroadcastAiAnimations();
                     }
-
                 }
 
-                int burst = 64; // 每帧最多处理这么多条，稳扎稳打
+                var burst = 64; // 每帧最多处理这么多条，稳扎稳打
                 while (AITool._aiSceneReady && _pendingAiTrans.Count > 0 && burst-- > 0)
                 {
                     var (id, p, f) = _pendingAiTrans.Dequeue();
                     AITool.ApplyAiTransform(id, p, f);
                 }
-
             }
 
             if (networkStarted && IsServer)
@@ -377,21 +320,16 @@ namespace EscapeFromDuckovCoopMod
             LoaclPlayerManager.Instance.UpdatePlayerStatuses();
             LoaclPlayerManager.Instance.UpdateRemoteCharacters();
 
-            if (Input.GetKeyDown(ModUI.Instance.toggleWindowKey))
-            {
-                ModUI.Instance.showPlayerStatusWindow = !ModUI.Instance.showPlayerStatusWindow;
-            }
+            if (Input.GetKeyDown(ModUI.Instance.toggleWindowKey)) ModUI.Instance.showPlayerStatusWindow = !ModUI.Instance.showPlayerStatusWindow;
 
             COOPManager.GrenadeM.ProcessPendingGrenades();
 
             if (!IsServer)
-            {
                 if (CoopTool._cliSelfHpPending && CharacterMainControl.Main != null)
                 {
-                   HealthM.Instance.ApplyHealthAndEnsureBar(CharacterMainControl.Main.gameObject, CoopTool._cliSelfHpMax, CoopTool._cliSelfHpCur);
+                    HealthM.Instance.ApplyHealthAndEnsureBar(CharacterMainControl.Main.gameObject, CoopTool._cliSelfHpMax, CoopTool._cliSelfHpCur);
                     CoopTool._cliSelfHpPending = false;
                 }
-            }
 
 
             if (IsServer) HealthM.Instance.Server_EnsureAllHealthHooks();
@@ -402,8 +340,8 @@ namespace EscapeFromDuckovCoopMod
             if (SceneNet.Instance.sceneVoteActive && Input.GetKeyDown(readyKey))
             {
                 SceneNet.Instance.localReady = !SceneNet.Instance.localReady;
-                if (IsServer) SceneNet.Instance.Server_OnSceneReadySet(null, SceneNet.Instance.localReady);  // 主机自己也走同一套
-                else SceneNet.Instance.Client_SendReadySet(SceneNet.Instance.localReady);           // 客户端上报主机
+                if (IsServer) SceneNet.Instance.Server_OnSceneReadySet(null, SceneNet.Instance.localReady); // 主机自己也走同一套
+                else SceneNet.Instance.Client_SendReadySet(SceneNet.Instance.localReady); // 客户端上报主机
             }
 
             if (networkStarted)
@@ -433,7 +371,7 @@ namespace EscapeFromDuckovCoopMod
                 {
                     if (!LoaclPlayerManager.Instance.IsAlive(c)) return false;
 
-                    string mySceneId = localPlayerStatus != null ? localPlayerStatus.SceneId : null;
+                    var mySceneId = localPlayerStatus != null ? localPlayerStatus.SceneId : null;
                     if (string.IsNullOrEmpty(mySceneId))
                         LoaclPlayerManager.Instance.ComputeIsInGame(out mySceneId);
 
@@ -443,18 +381,25 @@ namespace EscapeFromDuckovCoopMod
                     {
                         foreach (var kv in remoteCharacters)
                             if (kv.Value != null && kv.Value.GetComponent<CharacterMainControl>() == c)
-                            { if (!SceneM._srvPeerScene.TryGetValue(kv.Key, out peerScene) && playerStatuses.TryGetValue(kv.Key, out var st)) peerScene = st?.SceneId; break; }
+                            {
+                                if (!SceneM._srvPeerScene.TryGetValue(kv.Key, out peerScene) && playerStatuses.TryGetValue(kv.Key, out var st))
+                                    peerScene = st?.SceneId;
+                                break;
+                            }
                     }
                     else
                     {
                         foreach (var kv in clientRemoteCharacters)
                             if (kv.Value != null && kv.Value.GetComponent<CharacterMainControl>() == c)
-                            { if (clientPlayerStatuses.TryGetValue(kv.Key, out var st)) peerScene = st?.SceneId; break; }
+                            {
+                                if (clientPlayerStatuses.TryGetValue(kv.Key, out var st)) peerScene = st?.SceneId;
+                                break;
+                            }
                     }
 
                     return Spectator.AreSameMap(mySceneId, peerScene);
                 }).ToList();
-               
+
 
                 // 全员阵亡 → 退出观战并弹出结算
                 if (Spectator.Instance._spectateList.Count == 0 || SceneM.AllPlayersDead())
@@ -473,23 +418,82 @@ namespace EscapeFromDuckovCoopMod
                 // 鼠标左/右键切换（加个轻微节流）
                 if (Time.unscaledTime >= _spectateNextSwitchTime)
                 {
-                    if (Input.GetMouseButtonDown(0)) { Spectator.Instance.SpectateNext(); _spectateNextSwitchTime = Time.unscaledTime + 0.15f; }
-                    if (Input.GetMouseButtonDown(1)) { Spectator.Instance.SpectatePrev(); _spectateNextSwitchTime = Time.unscaledTime + 0.15f; }
+                    if (Input.GetMouseButtonDown(0))
+                    {
+                        Spectator.Instance.SpectateNext();
+                        _spectateNextSwitchTime = Time.unscaledTime + 0.15f;
+                    }
+
+                    if (Input.GetMouseButtonDown(1))
+                    {
+                        Spectator.Instance.SpectatePrev();
+                        _spectateNextSwitchTime = Time.unscaledTime + 0.15f;
+                    }
                 }
             }
-
-
-
-
         }
 
+
+        private void OnEnable()
+        {
+            SceneManager.sceneLoaded += OnSceneLoaded_IndexDestructibles;
+            LevelManager.OnAfterLevelInitialized += LevelManager_OnAfterLevelInitialized;
+            LevelManager.OnLevelInitialized += OnLevelInitialized_IndexDestructibles;
+
+
+            SceneManager.sceneLoaded += SceneManager_sceneLoaded;
+            LevelManager.OnLevelInitialized += LevelManager_OnLevelInitialized;
+        }
+
+        private void OnDisable()
+        {
+            SceneManager.sceneLoaded -= OnSceneLoaded_IndexDestructibles;
+            LevelManager.OnLevelInitialized -= OnLevelInitialized_IndexDestructibles;
+            //   LevelManager.OnAfterLevelInitialized -= _OnAfterLevelInitialized_ServerGate;
+
+            SceneManager.sceneLoaded -= SceneManager_sceneLoaded;
+            LevelManager.OnLevelInitialized -= LevelManager_OnLevelInitialized;
+        }
+
+        private void OnDestroy()
+        {
+            NetService.Instance.StopNetwork();
+        }
+
+        private void LevelManager_OnAfterLevelInitialized()
+        {
+            if (IsServer && networkStarted)
+                SceneNet.Instance.Server_SceneGateAsync().Forget();
+        }
+
+        private void LevelManager_OnLevelInitialized()
+        {
+            AITool.ResetAiSerials();
+            if (!IsServer) HealthM.Instance.Client_ReportSelfHealth_IfReadyOnce();
+            SceneNet.Instance.TrySendSceneReadyOnce();
+            if (!IsServer) COOPManager.Weather.Client_RequestEnvSync();
+
+            if (IsServer) COOPManager.AIHandle.Server_SendAiSeeds();
+            AIName.Client_ResetNameIconSeal_OnLevelInit();
+        }
+
+        //arg!!!!!!!!!!!
+        private void SceneManager_sceneLoaded(Scene arg0, LoadSceneMode arg1)
+        {
+            SceneNet.Instance.TrySendSceneReadyOnce();
+            if (!IsServer) COOPManager.Weather.Client_RequestEnvSync();
+        }
 
 
         public void OnNetworkReceive(NetPeer peer, NetPacketReader reader, byte channelNumber, DeliveryMethod deliveryMethod)
         {
-
             // 统一：读取 1 字节的操作码（Op）
-            if (reader.AvailableBytes <= 0) { reader.Recycle(); return; }
+            if (reader.AvailableBytes <= 0)
+            {
+                reader.Recycle();
+                return;
+            }
+
             var op = (Op)reader.GetByte();
             //  Debug.Log($"[RECV OP] {(byte)op}, avail={reader.AvailableBytes}");
 
@@ -499,29 +503,29 @@ namespace EscapeFromDuckovCoopMod
                 case Op.PLAYER_STATUS_UPDATE:
                     if (!IsServer)
                     {
-                        int playerCount = reader.GetInt();
+                        var playerCount = reader.GetInt();
                         clientPlayerStatuses.Clear();
 
-                        for (int i = 0; i < playerCount; i++)
+                        for (var i = 0; i < playerCount; i++)
                         {
-                            string endPoint = reader.GetString();
-                            string playerName = reader.GetString();
-                            int latency = reader.GetInt();
-                            bool isInGame = reader.GetBool();
-                            Vector3 position = reader.GetVector3();        
-                            Quaternion rotation = reader.GetQuaternion();
+                            var endPoint = reader.GetString();
+                            var playerName = reader.GetString();
+                            var latency = reader.GetInt();
+                            var isInGame = reader.GetBool();
+                            var position = reader.GetVector3();
+                            var rotation = reader.GetQuaternion();
 
-                            string sceneId = reader.GetString();
-                            string customFaceJson = reader.GetString();
+                            var sceneId = reader.GetString();
+                            var customFaceJson = reader.GetString();
 
-                            int equipmentCount = reader.GetInt();
+                            var equipmentCount = reader.GetInt();
                             var equipmentList = new List<EquipmentSyncData>();
-                            for (int j = 0; j < equipmentCount; j++)
+                            for (var j = 0; j < equipmentCount; j++)
                                 equipmentList.Add(EquipmentSyncData.Deserialize(reader));
 
-                            int weaponCount = reader.GetInt();
+                            var weaponCount = reader.GetInt();
                             var weaponList = new List<WeaponSyncData>();
-                            for (int j = 0; j < weaponCount; j++)
+                            for (var j = 0; j < weaponCount; j++)
                                 weaponList.Add(WeaponSyncData.Deserialize(reader));
 
                             if (NetService.Instance.IsSelfId(endPoint)) continue;
@@ -544,7 +548,7 @@ namespace EscapeFromDuckovCoopMod
                             if (!string.IsNullOrEmpty(sceneId))
                             {
                                 st.SceneId = sceneId;
-                               SceneNet.Instance._cliLastSceneIdByPlayer[endPoint] = sceneId; // 给 A 的兜底也喂一份
+                                SceneNet.Instance._cliLastSceneIdByPlayer[endPoint] = sceneId; // 给 A 的兜底也喂一份
                             }
 
                             if (clientRemoteCharacters.TryGetValue(st.EndPoint, out var existing) && existing != null)
@@ -554,7 +558,7 @@ namespace EscapeFromDuckovCoopMod
                             {
                                 if (!clientRemoteCharacters.ContainsKey(endPoint) || clientRemoteCharacters[endPoint] == null)
                                 {
-                                  CreateRemoteCharacter.CreateRemoteCharacterForClient(endPoint, position, rotation, customFaceJson).Forget();
+                                    CreateRemoteCharacter.CreateRemoteCharacterForClient(endPoint, position, rotation, customFaceJson).Forget();
                                 }
                                 else
                                 {
@@ -568,33 +572,31 @@ namespace EscapeFromDuckovCoopMod
                             }
                         }
                     }
+
                     break;
 
                 // ===== 客户端 -> 主机：上报自身状态 =====
                 case Op.CLIENT_STATUS_UPDATE:
-                    if (IsServer)
-                    {
-                       COOPManager.ClientHandle.HandleClientStatusUpdate(peer, reader);
-                    }
+                    if (IsServer) COOPManager.ClientHandle.HandleClientStatusUpdate(peer, reader);
                     break;
 
                 // ===== 位置信息（量化版本）=====
                 case Op.POSITION_UPDATE:
                     if (IsServer)
                     {
-                        string endPointC = reader.GetString();
-                        Vector3 posS = reader.GetV3cm();   // ← 原来是 GetVector3()
-                        Vector3 dirS = reader.GetDir();
-                        Quaternion rotS = Quaternion.LookRotation(dirS, Vector3.up);
+                        var endPointC = reader.GetString();
+                        var posS = reader.GetV3cm(); // ← 原来是 GetVector3()
+                        var dirS = reader.GetDir();
+                        var rotS = Quaternion.LookRotation(dirS, Vector3.up);
 
-                       COOPManager.PublicHandleUpdate.HandlePositionUpdate_Q(peer, endPointC, posS, rotS);
+                        COOPManager.PublicHandleUpdate.HandlePositionUpdate_Q(peer, endPointC, posS, rotS);
                     }
                     else
                     {
-                        string endPointS = reader.GetString();
-                        Vector3 posS = reader.GetV3cm();   // ← 原来是 GetVector3()
-                        Vector3 dirS = reader.GetDir();
-                        Quaternion rotS = Quaternion.LookRotation(dirS, Vector3.up);
+                        var endPointS = reader.GetString();
+                        var posS = reader.GetV3cm(); // ← 原来是 GetVector3()
+                        var dirS = reader.GetDir();
+                        var rotS = Quaternion.LookRotation(dirS, Vector3.up);
 
                         if (NetService.Instance.IsSelfId(endPointS)) break;
 
@@ -612,7 +614,7 @@ namespace EscapeFromDuckovCoopMod
                         if (clientRemoteCharacters.TryGetValue(endPointS, out var go) && go != null)
                         {
                             var ni = NetInterpUtil.Attach(go);
-                            ni?.Push(st.Position, st.Rotation);   // 原有：位置与根旋转插值
+                            ni?.Push(st.Position, st.Rotation); // 原有：位置与根旋转插值
 
                             var cmc = go.GetComponentInChildren<CharacterMainControl>(true);
                             if (cmc && cmc.modelRoot)
@@ -623,9 +625,10 @@ namespace EscapeFromDuckovCoopMod
                         }
                         else
                         {
-                           CreateRemoteCharacter.CreateRemoteCharacterForClient(endPointS, posS, rotS, st.CustomFaceJson).Forget();
+                            CreateRemoteCharacter.CreateRemoteCharacterForClient(endPointS, posS, rotS, st.CustomFaceJson).Forget();
                         }
                     }
+
                     break;
 
                 //动画
@@ -633,23 +636,23 @@ namespace EscapeFromDuckovCoopMod
                     if (IsServer)
                     {
                         // 保持客户端 -> 主机
-                       COOPManager.PublicHandleUpdate.HandleClientAnimationStatus(peer, reader);
+                        COOPManager.PublicHandleUpdate.HandleClientAnimationStatus(peer, reader);
                     }
                     else
                     {
                         // 保持主机 -> 客户端（playerId）
-                        string playerId = reader.GetString();
+                        var playerId = reader.GetString();
                         if (NetService.Instance.IsSelfId(playerId)) break;
 
-                        float moveSpeed = reader.GetFloat();
-                        float moveDirX = reader.GetFloat();
-                        float moveDirY = reader.GetFloat();
-                        bool isDashing = reader.GetBool();
-                        bool isAttacking = reader.GetBool();
-                        int handState = reader.GetInt();
-                        bool gunReady = reader.GetBool();
-                        int stateHash = reader.GetInt();
-                        float normTime = reader.GetFloat();
+                        var moveSpeed = reader.GetFloat();
+                        var moveDirX = reader.GetFloat();
+                        var moveDirY = reader.GetFloat();
+                        var isDashing = reader.GetBool();
+                        var isAttacking = reader.GetBool();
+                        var handState = reader.GetInt();
+                        var gunReady = reader.GetBool();
+                        var stateHash = reader.GetInt();
+                        var normTime = reader.GetFloat();
 
                         if (clientRemoteCharacters.TryGetValue(playerId, out var obj) && obj != null)
                         {
@@ -667,8 +670,8 @@ namespace EscapeFromDuckovCoopMod
                                 normTime = normTime
                             });
                         }
-
                     }
+
                     break;
 
                 // ===== 装备更新 =====
@@ -679,12 +682,13 @@ namespace EscapeFromDuckovCoopMod
                     }
                     else
                     {
-                        string endPoint = reader.GetString();
+                        var endPoint = reader.GetString();
                         if (NetService.Instance.IsSelfId(endPoint)) break;
-                        int slotHash = reader.GetInt();
-                        string itemId = reader.GetString();
+                        var slotHash = reader.GetInt();
+                        var itemId = reader.GetString();
                         COOPManager.ClientPlayer_Apply.ApplyEquipmentUpdate_Client(endPoint, slotHash, itemId).Forget();
                     }
+
                     break;
 
                 // ===== 武器更新 =====
@@ -695,27 +699,23 @@ namespace EscapeFromDuckovCoopMod
                     }
                     else
                     {
-                        string endPoint = reader.GetString();
+                        var endPoint = reader.GetString();
                         if (NetService.Instance.IsSelfId(endPoint)) break;
-                        int slotHash = reader.GetInt();
-                        string itemId = reader.GetString();
+                        var slotHash = reader.GetInt();
+                        var itemId = reader.GetString();
                         COOPManager.ClientPlayer_Apply.ApplyWeaponUpdate_Client(endPoint, slotHash, itemId).Forget();
                     }
+
                     break;
 
                 case Op.FIRE_REQUEST:
-                    if (IsServer)
-                    {
-                       COOPManager.WeaponHandle.HandleFireRequest(peer, reader);
-                    }
+                    if (IsServer) COOPManager.WeaponHandle.HandleFireRequest(peer, reader);
                     break;
 
                 case Op.FIRE_EVENT:
                     if (!IsServer)
-                    {
                         //Debug.Log("[RECV FIRE_EVENT] opcode path");
                         COOPManager.WeaponHandle.HandleFireEvent(reader);
-                    }
                     break;
 
                 default:
@@ -757,37 +757,38 @@ namespace EscapeFromDuckovCoopMod
                     if (IsServer) COOPManager.WeaponHandle.HandleMeleeAttackRequest(peer, reader);
                     break;
                 case Op.MELEE_ATTACK_SWING:
+                {
+                    if (!IsServer)
                     {
-                        if (!IsServer)
-                        {
-                            string shooter = reader.GetString();
-                            float delay = reader.GetFloat(); 
+                        var shooter = reader.GetString();
+                        var delay = reader.GetFloat();
 
-                            //先找玩家远端
-                            if (!NetService.Instance.IsSelfId(shooter) && clientRemoteCharacters.TryGetValue(shooter, out var who) && who)
+                        //先找玩家远端
+                        if (!NetService.Instance.IsSelfId(shooter) && clientRemoteCharacters.TryGetValue(shooter, out var who) && who)
+                        {
+                            var anim = who.GetComponentInChildren<CharacterAnimationControl_MagicBlend>(true);
+                            if (anim != null) anim.OnAttack();
+
+                            var cmc = who.GetComponent<CharacterMainControl>();
+                            var model = cmc ? cmc.characterModel : null;
+                            if (model) MeleeFx.SpawnSlashFx(model);
+                        }
+                        //兼容 AI:xxx
+                        else if (shooter.StartsWith("AI:"))
+                        {
+                            if (int.TryParse(shooter.Substring(3), out var aiId) && AITool.aiById.TryGetValue(aiId, out var cmc) && cmc)
                             {
-                                var anim = who.GetComponentInChildren<CharacterAnimationControl_MagicBlend>(true);
+                                var anim = cmc.GetComponentInChildren<CharacterAnimationControl_MagicBlend>(true);
                                 if (anim != null) anim.OnAttack();
 
-                                var cmc = who.GetComponent<CharacterMainControl>();
-                                var model = cmc ? cmc.characterModel : null;
-                                if (model) EscapeFromDuckovCoopMod.MeleeFx.SpawnSlashFx(model);
-                            }
-                            //兼容 AI:xxx
-                            else if (shooter.StartsWith("AI:"))
-                            {
-                                if (int.TryParse(shooter.Substring(3), out var aiId) && AITool.aiById.TryGetValue(aiId, out var cmc) && cmc)
-                                {
-                                    var anim = cmc.GetComponentInChildren<CharacterAnimationControl_MagicBlend>(true);
-                                    if (anim != null) anim.OnAttack();
-
-                                    var model = cmc.characterModel;
-                                    if (model) EscapeFromDuckovCoopMod.MeleeFx.SpawnSlashFx(model);
-                                }
+                                var model = cmc.characterModel;
+                                if (model) MeleeFx.SpawnSlashFx(model);
                             }
                         }
-                        break;
                     }
+
+                    break;
+                }
 
                 case Op.MELEE_HIT_REPORT:
                     if (IsServer) COOPManager.WeaponHandle.HandleMeleeHitReport(peer, reader);
@@ -804,135 +805,145 @@ namespace EscapeFromDuckovCoopMod
                     break;
 
                 case Op.PLAYER_HEALTH_REPORT:
+                {
+                    if (IsServer)
                     {
-                        if (IsServer)
-                        {
-                            float max = reader.GetFloat();
-                            float cur = reader.GetFloat();
-                            if (max <= 0f)
-                            {
-                                HealthTool._srvPendingHp[peer] = (max, cur);
-                                break;
-                            }
-                            if (remoteCharacters != null && remoteCharacters.TryGetValue(peer, out var go) && go)
-                            {
-                                // 主机本地先写实自己能立刻看到
-                                HealthM.Instance.ApplyHealthAndEnsureBar(go, max, cur);
-
-                                // 再用统一广播流程，发给本人 + 其他客户端
-                                var h = go.GetComponentInChildren<Health>(true);
-                                if (h) HealthM.Instance.Server_OnHealthChanged(peer, h);
-                            }
-                            else
-                            {
-                                //远端克隆还没创建缓存起来，等钩到 Health 后应用
-                                HealthTool._srvPendingHp[peer] = (max, cur);
-                            }
-                        }
-                        break;
-                    }
-
-
-                case Op.AUTH_HEALTH_SELF:
-                    {
-                        float max = reader.GetFloat();
-                        float cur = reader.GetFloat();
-
+                        var max = reader.GetFloat();
+                        var cur = reader.GetFloat();
                         if (max <= 0f)
                         {
-                            CoopTool._cliSelfHpMax = max; CoopTool._cliSelfHpCur = cur;
-                            CoopTool._cliSelfHpPending = true;
+                            HealthTool._srvPendingHp[peer] = (max, cur);
                             break;
                         }
 
-                        // --- 防回弹：受击窗口内不接受“比本地更高”的回显 ---
-                        bool shouldApply = true;
-                        try
+                        if (remoteCharacters != null && remoteCharacters.TryGetValue(peer, out var go) && go)
                         {
-                            var main = CharacterMainControl.Main;
-                            var selfH = main ? main.Health : null;
-                            if (selfH)
-                            {
-                                float localCur = selfH.CurrentHealth;
-                                // 仅在“刚受击的短时间窗”里做保护；平时允许正常回显（例如治疗）
-                                if (Time.time - HealthTool._cliLastSelfHurtAt <= SELF_ACCEPT_WINDOW)
-                                {
-                                    // 如果回显值会让血量“变多”（典型回弹），判定为陈旧 echo 丢弃
-                                    if (cur > localCur + 0.0001f)
-                                    {
+                            // 主机本地先写实自己能立刻看到
+                            HealthM.Instance.ApplyHealthAndEnsureBar(go, max, cur);
 
-                                       UnityEngine.Debug.Log($"[HP][SelfEcho] drop stale echo in window: local={localCur:F3} srv={cur:F3}");
-
-                                        shouldApply = false;
-                                    }
-                                }
-                            }
+                            // 再用统一广播流程，发给本人 + 其他客户端
+                            var h = go.GetComponentInChildren<Health>(true);
+                            if (h) HealthM.Instance.Server_OnHealthChanged(peer, h);
                         }
-                        catch { }
-
-                        HealthM.Instance._cliApplyingSelfSnap = true;
-                        HealthM.Instance._cliEchoMuteUntil = Time.time + SELF_MUTE_SEC;
-                        try
+                        else
                         {
-                            if (shouldApply)
+                            //远端克隆还没创建缓存起来，等钩到 Health 后应用
+                            HealthTool._srvPendingHp[peer] = (max, cur);
+                        }
+                    }
+
+                    break;
+                }
+
+
+                case Op.AUTH_HEALTH_SELF:
+                {
+                    var max = reader.GetFloat();
+                    var cur = reader.GetFloat();
+
+                    if (max <= 0f)
+                    {
+                        CoopTool._cliSelfHpMax = max;
+                        CoopTool._cliSelfHpCur = cur;
+                        CoopTool._cliSelfHpPending = true;
+                        break;
+                    }
+
+                    // --- 防回弹：受击窗口内不接受“比本地更高”的回显 ---
+                    var shouldApply = true;
+                    try
+                    {
+                        var main = CharacterMainControl.Main;
+                        var selfH = main ? main.Health : null;
+                        if (selfH)
+                        {
+                            var localCur = selfH.CurrentHealth;
+                            // 仅在“刚受击的短时间窗”里做保护；平时允许正常回显（例如治疗）
+                            if (Time.time - HealthTool._cliLastSelfHurtAt <= SELF_ACCEPT_WINDOW)
+                                // 如果回显值会让血量“变多”（典型回弹），判定为陈旧 echo 丢弃
+                                if (cur > localCur + 0.0001f)
+                                {
+                                    Debug.Log($"[HP][SelfEcho] drop stale echo in window: local={localCur:F3} srv={cur:F3}");
+
+                                    shouldApply = false;
+                                }
+                        }
+                    }
+                    catch
+                    {
+                    }
+
+                    HealthM.Instance._cliApplyingSelfSnap = true;
+                    HealthM.Instance._cliEchoMuteUntil = Time.time + SELF_MUTE_SEC;
+                    try
+                    {
+                        if (shouldApply)
+                        {
+                            if (CoopTool._cliSelfHpPending)
                             {
-                                if (CoopTool._cliSelfHpPending)
-                                {
-                                    CoopTool._cliSelfHpMax = max; CoopTool._cliSelfHpCur = cur;
-                                    CoopTool.Client_ApplyPendingSelfIfReady();
-                                }
-                                else
-                                {
-                                    var main = CharacterMainControl.Main;
-                                    var go = main ? main.gameObject : null;
-                                    if (go)
-                                    {
-                                        var h = main.Health;
-                                        var cmc = main;
-                                        if (h)
-                                        {
-                                            try { h.autoInit = false; } catch { }
-                                            HealthTool.BindHealthToCharacter(h, cmc);
-                                            HealthM.Instance.ForceSetHealth(h, max, cur, ensureBar: true);
-                                        }
-                                    }
-                                    CoopTool._cliSelfHpPending = false;
-                                }
+                                CoopTool._cliSelfHpMax = max;
+                                CoopTool._cliSelfHpCur = cur;
+                                CoopTool.Client_ApplyPendingSelfIfReady();
                             }
                             else
                             {
-                                // 丢弃这帧自回显，不改本地血量
+                                var main = CharacterMainControl.Main;
+                                var go = main ? main.gameObject : null;
+                                if (go)
+                                {
+                                    var h = main.Health;
+                                    var cmc = main;
+                                    if (h)
+                                    {
+                                        try
+                                        {
+                                            h.autoInit = false;
+                                        }
+                                        catch
+                                        {
+                                        }
+
+                                        HealthTool.BindHealthToCharacter(h, cmc);
+                                        HealthM.Instance.ForceSetHealth(h, max, cur);
+                                    }
+                                }
+
+                                CoopTool._cliSelfHpPending = false;
                             }
                         }
-                        finally
-                        {
-                            HealthM.Instance._cliApplyingSelfSnap = false;
-                        }
-                        break;
+                        // 丢弃这帧自回显，不改本地血量
                     }
+                    finally
+                    {
+                        HealthM.Instance._cliApplyingSelfSnap = false;
+                    }
+
+                    break;
+                }
 
                 case Op.AUTH_HEALTH_REMOTE:
+                {
+                    if (!IsServer)
                     {
-                        if (!IsServer)
+                        var playerId = reader.GetString();
+                        var max = reader.GetFloat();
+                        var cur = reader.GetFloat();
+
+                        // 无效快照直接挂起，避免把 0/0 覆盖到血条
+                        if (max <= 0f)
                         {
-                            string playerId = reader.GetString();
-                            float max = reader.GetFloat();
-                            float cur = reader.GetFloat();
-
-                            // 无效快照直接挂起，避免把 0/0 覆盖到血条
-                            if (max <= 0f)
-                            {
-                                CoopTool._cliPendingRemoteHp[playerId] = (max, cur);
-                                break;
-                            }
-
-                            if (clientRemoteCharacters != null && clientRemoteCharacters.TryGetValue(playerId, out var go) && go)
-                                HealthM.Instance.ApplyHealthAndEnsureBar(go, max, cur);
-                            else
-                                CoopTool._cliPendingRemoteHp[playerId] = (max, cur);
+                            CoopTool._cliPendingRemoteHp[playerId] = (max, cur);
+                            break;
                         }
-                        break;
+
+                        if (clientRemoteCharacters != null && clientRemoteCharacters.TryGetValue(playerId, out var go) && go)
+                            HealthM.Instance.ApplyHealthAndEnsureBar(go, max, cur);
+                        else
+                            CoopTool._cliPendingRemoteHp[playerId] = (max, cur);
                     }
+
+                    break;
+                }
 
                 case Op.PLAYER_BUFF_SELF_APPLY:
                     if (!IsServer) COOPManager.Buff.HandlePlayerBuffSelfApply(reader);
@@ -943,565 +954,619 @@ namespace EscapeFromDuckovCoopMod
 
 
                 case Op.SCENE_VOTE_START:
+                {
+                    if (!IsServer)
                     {
-                        if (!IsServer)
-                        {
-                            SceneNet.Instance.Client_OnSceneVoteStart(reader);
-                            // 观战中收到“开始投票”，记一个“投票结束就结算”的意图
-                            if (Spectator.Instance._spectatorActive) Spectator.Instance._spectatorEndOnVotePending = true;
-                        }
-                        break;
+                        SceneNet.Instance.Client_OnSceneVoteStart(reader);
+                        // 观战中收到“开始投票”，记一个“投票结束就结算”的意图
+                        if (Spectator.Instance._spectatorActive) Spectator.Instance._spectatorEndOnVotePending = true;
                     }
+
+                    break;
+                }
 
                 case Op.SCENE_VOTE_REQ:
+                {
+                    if (IsServer)
                     {
-                        if (IsServer)
-                        {
-                            string targetId = reader.GetString();
-                            byte flags = reader.GetByte();
-                            bool hasCurtain, useLoc, notifyEvac, saveToFile;
-                            PackFlag.UnpackFlags(flags, out hasCurtain, out useLoc, out notifyEvac, out saveToFile);
+                        var targetId = reader.GetString();
+                        var flags = reader.GetByte();
+                        bool hasCurtain, useLoc, notifyEvac, saveToFile;
+                        PackFlag.UnpackFlags(flags, out hasCurtain, out useLoc, out notifyEvac, out saveToFile);
 
-                            string curtainGuid = null;
-                            if (hasCurtain) SceneNet.TryGetString(reader, out curtainGuid);
-                            if (!SceneNet.TryGetString(reader, out var locName)) locName = string.Empty;
+                        string curtainGuid = null;
+                        if (hasCurtain) SceneNet.TryGetString(reader, out curtainGuid);
+                        if (!SceneNet.TryGetString(reader, out var locName)) locName = string.Empty;
 
-                            // ★ 主机若正处于观战，记下“投票结束就结算”的意图
-                            if (Spectator.Instance._spectatorActive) Spectator.Instance._spectatorEndOnVotePending = true;
+                        // ★ 主机若正处于观战，记下“投票结束就结算”的意图
+                        if (Spectator.Instance._spectatorActive) Spectator.Instance._spectatorEndOnVotePending = true;
 
-                            SceneNet.Instance.Host_BeginSceneVote_Simple(targetId, curtainGuid, notifyEvac, saveToFile, useLoc, locName);
-                        }
-                        break;
+                        SceneNet.Instance.Host_BeginSceneVote_Simple(targetId, curtainGuid, notifyEvac, saveToFile, useLoc, locName);
                     }
 
+                    break;
+                }
 
 
                 case Op.SCENE_READY_SET:
+                {
+                    if (IsServer)
                     {
-                        if (IsServer)
+                        var ready = reader.GetBool();
+                        SceneNet.Instance.Server_OnSceneReadySet(peer, ready);
+                    }
+                    else
+                    {
+                        var pid = reader.GetString();
+                        var rdy = reader.GetBool();
+
+                        if (!SceneNet.Instance.sceneReady.ContainsKey(pid) && SceneNet.Instance.sceneParticipantIds.Contains(pid))
+                            SceneNet.Instance.sceneReady[pid] = false;
+
+                        if (SceneNet.Instance.sceneReady.ContainsKey(pid))
                         {
-                            bool ready = reader.GetBool();
-                            SceneNet.Instance.Server_OnSceneReadySet(peer, ready);
+                            SceneNet.Instance.sceneReady[pid] = rdy;
+                            Debug.Log($"[SCENE] READY_SET -> {pid} = {rdy}");
                         }
                         else
                         {
-                            string pid = reader.GetString();
-                            bool rdy = reader.GetBool();
-
-                            if (!SceneNet.Instance.sceneReady.ContainsKey(pid) && SceneNet.Instance.sceneParticipantIds.Contains(pid))
-                                SceneNet.Instance.sceneReady[pid] = false;
-
-                            if (SceneNet.Instance.sceneReady.ContainsKey(pid))
-                            {
-                                SceneNet.Instance.sceneReady[pid] = rdy;
-                                Debug.Log($"[SCENE] READY_SET -> {pid} = {rdy}");
-                            }
-                            else
-                            {
-                                Debug.LogWarning($"[SCENE] READY_SET for unknown pid '{pid}'. participants=[{string.Join(",", SceneNet.Instance.sceneParticipantIds)}]");
-                            }
+                            Debug.LogWarning($"[SCENE] READY_SET for unknown pid '{pid}'. participants=[{string.Join(",", SceneNet.Instance.sceneParticipantIds)}]");
                         }
-                        break;
                     }
+
+                    break;
+                }
 
                 case Op.SCENE_BEGIN_LOAD:
+                {
+                    if (!IsServer)
                     {
-                        if (!IsServer)
-                        {
-                            // 观战玩家：投票结束时直接弹死亡结算，不参与接下来的本地切图
-                            if (Spectator.Instance._spectatorActive && Spectator.Instance._spectatorEndOnVotePending)
-                            {
-                                Spectator.Instance._spectatorEndOnVotePending = false;
-                                SceneNet.Instance.sceneVoteActive = false;
-                                SceneNet.Instance.sceneReady.Clear();
-                                SceneNet.Instance.localReady = false;
-
-                               Spectator.Instance.EndSpectatorAndShowClosure(); // 直接用你现成的方法弹结算
-                                break; // 不再调用 Client_OnBeginSceneLoad(reader)
-                            }
-
-                            // 普通玩家照常走
-                            SceneNet.Instance.Client_OnBeginSceneLoad(reader);
-                        }
-                        break;
-                    }
-
-                case Op.SCENE_CANCEL:
-                    {
-                        SceneNet.Instance.sceneVoteActive = false;
-                        SceneNet.Instance.sceneReady.Clear();
-                        SceneNet.Instance.localReady = false;
-
+                        // 观战玩家：投票结束时直接弹死亡结算，不参与接下来的本地切图
                         if (Spectator.Instance._spectatorActive && Spectator.Instance._spectatorEndOnVotePending)
                         {
-
                             Spectator.Instance._spectatorEndOnVotePending = false;
-                            Spectator.Instance.EndSpectatorAndShowClosure();
+                            SceneNet.Instance.sceneVoteActive = false;
+                            SceneNet.Instance.sceneReady.Clear();
+                            SceneNet.Instance.localReady = false;
+
+                            Spectator.Instance.EndSpectatorAndShowClosure(); // 直接用你现成的方法弹结算
+                            break; // 不再调用 Client_OnBeginSceneLoad(reader)
                         }
-                        break;
+
+                        // 普通玩家照常走
+                        SceneNet.Instance.Client_OnBeginSceneLoad(reader);
                     }
+
+                    break;
+                }
+
+                case Op.SCENE_CANCEL:
+                {
+                    SceneNet.Instance.sceneVoteActive = false;
+                    SceneNet.Instance.sceneReady.Clear();
+                    SceneNet.Instance.localReady = false;
+
+                    if (Spectator.Instance._spectatorActive && Spectator.Instance._spectatorEndOnVotePending)
+                    {
+                        Spectator.Instance._spectatorEndOnVotePending = false;
+                        Spectator.Instance.EndSpectatorAndShowClosure();
+                    }
+
+                    break;
+                }
 
 
                 case Op.SCENE_READY:
-                    {
-                        string id = reader.GetString();   // 发送者 id（EndPoint）
-                        string sid = reader.GetString();  // SceneId（string）
-                        Vector3 pos = reader.GetVector3(); // 初始位置
-                        Quaternion rot = reader.GetQuaternion();
-                        string face = reader.GetString();
+                {
+                    var id = reader.GetString(); // 发送者 id（EndPoint）
+                    var sid = reader.GetString(); // SceneId（string）
+                    var pos = reader.GetVector3(); // 初始位置
+                    var rot = reader.GetQuaternion();
+                    var face = reader.GetString();
 
-                        if (IsServer)
-                        {
-                            SceneNet.Instance.Server_HandleSceneReady(peer, id, sid, pos, rot, face);
-                        }
-                        // 客户端若收到这条（主机广播），实际创建工作由 REMOTE_CREATE 完成，这里不处理
-                        break;
-                    }
+                    if (IsServer) SceneNet.Instance.Server_HandleSceneReady(peer, id, sid, pos, rot, face);
+                    // 客户端若收到这条（主机广播），实际创建工作由 REMOTE_CREATE 完成，这里不处理
+                    break;
+                }
 
                 case Op.ENV_SYNC_REQUEST:
                     if (IsServer) COOPManager.Weather.Server_BroadcastEnvSync(peer);
                     break;
 
                 case Op.ENV_SYNC_STATE:
+                {
+                    // 客户端应用
+                    if (!IsServer)
                     {
-                        // 客户端应用
-                        if (!IsServer)
+                        var day = reader.GetLong();
+                        var sec = reader.GetDouble();
+                        var scale = reader.GetFloat();
+                        var seed = reader.GetInt();
+                        var forceW = reader.GetBool();
+                        var forceWVal = reader.GetInt();
+                        var curWeather = reader.GetInt();
+                        var stormLv = reader.GetByte();
+
+                        var lootCount = 0;
+                        try
                         {
-                            long day = reader.GetLong();
-                            double sec = reader.GetDouble();
-                            float scale = reader.GetFloat();
-                            int seed = reader.GetInt();
-                            bool forceW = reader.GetBool();
-                            int forceWVal = reader.GetInt();
-                            int curWeather = reader.GetInt();
-                            byte stormLv = reader.GetByte();
-
-                            int lootCount = 0;
-                            try { lootCount = reader.GetInt(); } catch { lootCount = 0; }
-                            var vis = new Dictionary<int, bool>(lootCount);
-                            for (int i = 0; i < lootCount; ++i)
-                            {
-                                int k = 0; bool on = false;
-                                try { k = reader.GetInt(); } catch { }
-                                try { on = reader.GetBool(); } catch { }
-                                vis[k] = on;
-                            }
-                            Client_ApplyLootVisibility(vis);
-
-                            // 再读门快照（如果主机这次没带就是 0）
-                            int doorCount = 0;
-                            try { doorCount = reader.GetInt(); } catch { doorCount = 0; }
-                            for (int i = 0; i < doorCount; ++i)
-                            {
-                                int dk = 0; bool cl = false;
-                                try { dk = reader.GetInt(); } catch { }
-                                try { cl = reader.GetBool(); } catch { }
-                               COOPManager.Door.Client_ApplyDoorState(dk, cl);
-                            }
-
-                            int deadCount = 0;
-                            try { deadCount = reader.GetInt(); } catch { deadCount = 0; }
-                            for (int i = 0; i < deadCount; ++i)
-                            {
-                                uint did = 0;
-                                try { did = reader.GetUInt(); } catch { }
-                                if (did != 0) COOPManager.destructible.Client_ApplyDestructibleDead_Snapshot(did);
-                            }
-
-                           COOPManager.Weather.Client_ApplyEnvSync(day, sec, scale, seed, forceW, forceWVal, curWeather, stormLv);
+                            lootCount = reader.GetInt();
                         }
-                        break;
+                        catch
+                        {
+                            lootCount = 0;
+                        }
+
+                        var vis = new Dictionary<int, bool>(lootCount);
+                        for (var i = 0; i < lootCount; ++i)
+                        {
+                            var k = 0;
+                            var on = false;
+                            try
+                            {
+                                k = reader.GetInt();
+                            }
+                            catch
+                            {
+                            }
+
+                            try
+                            {
+                                on = reader.GetBool();
+                            }
+                            catch
+                            {
+                            }
+
+                            vis[k] = on;
+                        }
+
+                        Client_ApplyLootVisibility(vis);
+
+                        // 再读门快照（如果主机这次没带就是 0）
+                        var doorCount = 0;
+                        try
+                        {
+                            doorCount = reader.GetInt();
+                        }
+                        catch
+                        {
+                            doorCount = 0;
+                        }
+
+                        for (var i = 0; i < doorCount; ++i)
+                        {
+                            var dk = 0;
+                            var cl = false;
+                            try
+                            {
+                                dk = reader.GetInt();
+                            }
+                            catch
+                            {
+                            }
+
+                            try
+                            {
+                                cl = reader.GetBool();
+                            }
+                            catch
+                            {
+                            }
+
+                            COOPManager.Door.Client_ApplyDoorState(dk, cl);
+                        }
+
+                        var deadCount = 0;
+                        try
+                        {
+                            deadCount = reader.GetInt();
+                        }
+                        catch
+                        {
+                            deadCount = 0;
+                        }
+
+                        for (var i = 0; i < deadCount; ++i)
+                        {
+                            uint did = 0;
+                            try
+                            {
+                                did = reader.GetUInt();
+                            }
+                            catch
+                            {
+                            }
+
+                            if (did != 0) COOPManager.destructible.Client_ApplyDestructibleDead_Snapshot(did);
+                        }
+
+                        COOPManager.Weather.Client_ApplyEnvSync(day, sec, scale, seed, forceW, forceWVal, curWeather, stormLv);
                     }
+
+                    break;
+                }
 
 
                 case Op.LOOT_REQ_OPEN:
-                    {
-                        if (IsServer) LootManager.Instance.Server_HandleLootOpenRequest(peer, reader);
-                        break;
-                    }
-
+                {
+                    if (IsServer) LootManager.Instance.Server_HandleLootOpenRequest(peer, reader);
+                    break;
+                }
 
 
                 case Op.LOOT_STATE:
-                    {
-                        if (IsServer) break;
-                        COOPManager.LootNet.Client_ApplyLootboxState(reader);
+                {
+                    if (IsServer) break;
+                    COOPManager.LootNet.Client_ApplyLootboxState(reader);
 
-                        break;
-                    }
+                    break;
+                }
                 case Op.LOOT_REQ_PUT:
-                    {
-                        if (!IsServer) break;
-                        COOPManager.LootNet.Server_HandleLootPutRequest(peer, reader);
-                        break;
-                    }
+                {
+                    if (!IsServer) break;
+                    COOPManager.LootNet.Server_HandleLootPutRequest(peer, reader);
+                    break;
+                }
                 case Op.LOOT_REQ_TAKE:
-                    {
-                        if (!IsServer) break;
-                        COOPManager.LootNet.Server_HandleLootTakeRequest(peer, reader);
-                        break;
-                    }
+                {
+                    if (!IsServer) break;
+                    COOPManager.LootNet.Server_HandleLootTakeRequest(peer, reader);
+                    break;
+                }
                 case Op.LOOT_PUT_OK:
-                    {
-                        if (IsServer) break;
-                        COOPManager.LootNet.Client_OnLootPutOk(reader);
-                        break;
-                    }
+                {
+                    if (IsServer) break;
+                    COOPManager.LootNet.Client_OnLootPutOk(reader);
+                    break;
+                }
                 case Op.LOOT_TAKE_OK:
-                    {
-                        if (IsServer) break;
-                        COOPManager.LootNet.Client_OnLootTakeOk(reader);
-                        break;
-                    }
+                {
+                    if (IsServer) break;
+                    COOPManager.LootNet.Client_OnLootTakeOk(reader);
+                    break;
+                }
 
                 case Op.LOOT_DENY:
-                    {
-                        if (IsServer) break;
-                        string reason = reader.GetString();
-                        Debug.LogWarning($"[LOOT] 请求被拒绝：{reason}");
+                {
+                    if (IsServer) break;
+                    var reason = reader.GetString();
+                    Debug.LogWarning($"[LOOT] 请求被拒绝：{reason}");
 
-                        // no_inv 不要立刻重试，避免请求风暴
-                        if (reason == "no_inv")
-                            break;
-
-                        // 其它可恢复类错误（如 rm_fail/bad_snapshot）再温和地刷新一次
-                        var lv = Duckov.UI.LootView.Instance;
-                        var inv = lv ? lv.TargetInventory : null;
-                        if (inv) COOPManager.LootNet.Client_RequestLootState(inv);
+                    // no_inv 不要立刻重试，避免请求风暴
+                    if (reason == "no_inv")
                         break;
-                    }
 
+                    // 其它可恢复类错误（如 rm_fail/bad_snapshot）再温和地刷新一次
+                    var lv = LootView.Instance;
+                    var inv = lv ? lv.TargetInventory : null;
+                    if (inv) COOPManager.LootNet.Client_RequestLootState(inv);
+                    break;
+                }
 
 
                 case Op.AI_SEED_SNAPSHOT:
-                    {
-                        if (!IsServer) COOPManager.AIHandle.HandleAiSeedSnapshot(reader);
-                        break;
-                    }
+                {
+                    if (!IsServer) COOPManager.AIHandle.HandleAiSeedSnapshot(reader);
+                    break;
+                }
                 case Op.AI_LOADOUT_SNAPSHOT:
+                {
+                    var ver = reader.GetByte();
+                    var aiId = reader.GetInt();
+
+                    var ne = reader.GetInt();
+                    var equips = new List<(int slot, int tid)>(ne);
+                    for (var i = 0; i < ne; ++i)
                     {
-                        byte ver = reader.GetByte();
-                        int aiId = reader.GetInt();
-
-                        int ne = reader.GetInt();
-                        var equips = new List<(int slot, int tid)>(ne);
-                        for (int i = 0; i < ne; ++i)
-                        {
-                            int sh = reader.GetInt();
-                            int tid = reader.GetInt();
-                            equips.Add((sh, tid));
-                        }
-
-                        int nw = reader.GetInt();
-                        var weapons = new List<(int slot, int tid)>(nw);
-                        for (int i = 0; i < nw; ++i)
-                        {
-                            int sh = reader.GetInt();
-                            int tid = reader.GetInt();
-                            weapons.Add((sh, tid));
-                        }
-
-                        bool hasFace = reader.GetBool();
-                        string faceJson = hasFace ? reader.GetString() : null;
-
-                        bool hasModelName = reader.GetBool();
-                        string modelName = hasModelName ? reader.GetString() : null;
-
-                        int iconType = reader.GetInt();
-
-                        bool showName = false;
-                        if (ver >= 4) showName = reader.GetBool();
-
-                        string displayName = null;
-                        if (ver >= 5)
-                        {
-                            bool hasName = reader.GetBool();
-                            if (hasName) displayName = reader.GetString();
-                        }
-
-                        if (IsServer) break;
-
-                        if (LogAiLoadoutDebug)
-                            Debug.Log($"[AI-RECV] ver={ver} aiId={aiId} model='{modelName}' icon={iconType} showName={showName} faceLen={(faceJson != null ? faceJson.Length : 0)}");
-
-                        if (AITool.aiById.TryGetValue(aiId, out var cmc) && cmc)
-                            COOPManager.AIHandle.Client_ApplyAiLoadout(aiId, equips, weapons, faceJson, modelName, iconType, showName, displayName).Forget();
-                        else
-                            COOPManager.AIHandle.pendingAiLoadouts[aiId] = (equips, weapons, faceJson, modelName, iconType, showName, displayName);
-
-                        break;
+                        var sh = reader.GetInt();
+                        var tid = reader.GetInt();
+                        equips.Add((sh, tid));
                     }
+
+                    var nw = reader.GetInt();
+                    var weapons = new List<(int slot, int tid)>(nw);
+                    for (var i = 0; i < nw; ++i)
+                    {
+                        var sh = reader.GetInt();
+                        var tid = reader.GetInt();
+                        weapons.Add((sh, tid));
+                    }
+
+                    var hasFace = reader.GetBool();
+                    var faceJson = hasFace ? reader.GetString() : null;
+
+                    var hasModelName = reader.GetBool();
+                    var modelName = hasModelName ? reader.GetString() : null;
+
+                    var iconType = reader.GetInt();
+
+                    var showName = false;
+                    if (ver >= 4) showName = reader.GetBool();
+
+                    string displayName = null;
+                    if (ver >= 5)
+                    {
+                        var hasName = reader.GetBool();
+                        if (hasName) displayName = reader.GetString();
+                    }
+
+                    if (IsServer) break;
+
+                    if (LogAiLoadoutDebug)
+                        Debug.Log(
+                            $"[AI-RECV] ver={ver} aiId={aiId} model='{modelName}' icon={iconType} showName={showName} faceLen={(faceJson != null ? faceJson.Length : 0)}");
+
+                    if (AITool.aiById.TryGetValue(aiId, out var cmc) && cmc)
+                        COOPManager.AIHandle.Client_ApplyAiLoadout(aiId, equips, weapons, faceJson, modelName, iconType, showName, displayName).Forget();
+                    else
+                        COOPManager.AIHandle.pendingAiLoadouts[aiId] = (equips, weapons, faceJson, modelName, iconType, showName, displayName);
+
+                    break;
+                }
 
                 case Op.AI_TRANSFORM_SNAPSHOT:
+                {
+                    if (IsServer) break;
+                    var n = reader.GetInt();
+
+                    if (!AITool._aiSceneReady)
                     {
-                        if (IsServer) break; 
-                        int n = reader.GetInt();
-
-                        if (!AITool._aiSceneReady)
+                        for (var i = 0; i < n; ++i)
                         {
-                            for (int i = 0; i < n; ++i)
-                            {
-                                int aiId = reader.GetInt();
-                                Vector3 p = reader.GetV3cm();
-                                Vector3 f = reader.GetDir();
-                                if (_pendingAiTrans.Count < 512) _pendingAiTrans.Enqueue((aiId, p, f)); // 防“Mr.Sans”炸锅
-                            }
-                            break;
+                            var aiId = reader.GetInt();
+                            var p = reader.GetV3cm();
+                            var f = reader.GetDir();
+                            if (_pendingAiTrans.Count < 512) _pendingAiTrans.Enqueue((aiId, p, f)); // 防“Mr.Sans”炸锅
                         }
 
-                        for (int i = 0; i < n; i++)
-                        {
-                            int aiId = reader.GetInt();
-                            Vector3 p = reader.GetV3cm();
-                            Vector3 f = reader.GetDir();
-                            AITool.ApplyAiTransform(aiId, p, f); // 抽成函数复用下面冲队列逻辑
-                        }
                         break;
                     }
+
+                    for (var i = 0; i < n; i++)
+                    {
+                        var aiId = reader.GetInt();
+                        var p = reader.GetV3cm();
+                        var f = reader.GetDir();
+                        AITool.ApplyAiTransform(aiId, p, f); // 抽成函数复用下面冲队列逻辑
+                    }
+
+                    break;
+                }
 
                 case Op.AI_ANIM_SNAPSHOT:
+                {
+                    if (!IsServer)
                     {
-                        if (!IsServer)
+                        var n = reader.GetInt();
+                        for (var i = 0; i < n; ++i)
                         {
-                            int n = reader.GetInt();
-                            for (int i = 0; i < n; ++i)
+                            var id = reader.GetInt();
+                            var st = new AiAnimState
                             {
-                                int id = reader.GetInt();
-                                var st = new AiAnimState
-                                {
-                                    speed = reader.GetFloat(),
-                                    dirX = reader.GetFloat(),
-                                    dirY = reader.GetFloat(),
-                                    hand = reader.GetInt(),
-                                    gunReady = reader.GetBool(),
-                                    dashing = reader.GetBool(),
-                                };
-                                if (!AITool.Client_ApplyAiAnim(id, st))
-                                    _pendingAiAnims[id] = st;
-                            }
+                                speed = reader.GetFloat(),
+                                dirX = reader.GetFloat(),
+                                dirY = reader.GetFloat(),
+                                hand = reader.GetInt(),
+                                gunReady = reader.GetBool(),
+                                dashing = reader.GetBool()
+                            };
+                            if (!AITool.Client_ApplyAiAnim(id, st))
+                                _pendingAiAnims[id] = st;
                         }
-                        break;
                     }
+
+                    break;
+                }
 
                 case Op.AI_ATTACK_SWING:
+                {
+                    if (!IsServer)
                     {
-                        if (!IsServer)
+                        var id = reader.GetInt();
+                        if (AITool.aiById.TryGetValue(id, out var cmc) && cmc)
                         {
-                            int id = reader.GetInt();
-                            if (AITool.aiById.TryGetValue(id, out var cmc) && cmc)
-                            {
-                                var anim = cmc.GetComponent<CharacterAnimationControl_MagicBlend>();
-                                if (anim != null) anim.OnAttack();
-                                var model = cmc.characterModel;
-                                if (model) MeleeFx.SpawnSlashFx(model);
-                            }
+                            var anim = cmc.GetComponent<CharacterAnimationControl_MagicBlend>();
+                            if (anim != null) anim.OnAttack();
+                            var model = cmc.characterModel;
+                            if (model) MeleeFx.SpawnSlashFx(model);
                         }
-                        break;
                     }
+
+                    break;
+                }
 
                 case Op.AI_HEALTH_SYNC:
+                {
+                    var id = reader.GetInt();
+
+                    float max = 0f, cur = 0f;
+                    if (reader.AvailableBytes >= 8)
                     {
-                        int id = reader.GetInt();
-
-                        float max = 0f, cur = 0f;
-                        if (reader.AvailableBytes >= 8)
-                        {   
-                            max = reader.GetFloat();
-                            cur = reader.GetFloat();
-                        }
-                        else
-                        {                            
-                            cur = reader.GetFloat();
-                        }
-
-                        COOPManager.AIHealth.Client_ApplyAiHealth(id, max, cur);
-                        break;
+                        max = reader.GetFloat();
+                        cur = reader.GetFloat();
                     }
+                    else
+                    {
+                        cur = reader.GetFloat();
+                    }
+
+                    COOPManager.AIHealth.Client_ApplyAiHealth(id, max, cur);
+                    break;
+                }
 
 
                 // --- 客户端：读取 aiId，并把它传下去 ---
                 case Op.DEAD_LOOT_SPAWN:
-                    {
-                        int scene = reader.GetInt();
-                        int aiId = reader.GetInt();
-                        int lootUid = reader.GetInt();                  
-                        Vector3 pos = reader.GetV3cm();
-                        Quaternion rot = reader.GetQuaternion();
-                        if (UnityEngine.SceneManagement.SceneManager.GetActiveScene().buildIndex != scene) break;
+                {
+                    var scene = reader.GetInt();
+                    var aiId = reader.GetInt();
+                    var lootUid = reader.GetInt();
+                    var pos = reader.GetV3cm();
+                    var rot = reader.GetQuaternion();
+                    if (SceneManager.GetActiveScene().buildIndex != scene) break;
 
-                       DeadLootBox.Instance.SpawnDeadLootboxAt(aiId, lootUid, pos, rot);    
-                        break;
-                    }
-
-             
+                    DeadLootBox.Instance.SpawnDeadLootboxAt(aiId, lootUid, pos, rot);
+                    break;
+                }
 
 
                 case Op.AI_NAME_ICON:
-                    {
-                        if (IsServer) break;
+                {
+                    if (IsServer) break;
 
-                        int aiId = reader.GetInt();
-                        int iconType = reader.GetInt();
-                        bool showName = reader.GetBool();
-                        string displayName = null;
-                        bool hasName = reader.GetBool();
-                        if (hasName) displayName = reader.GetString();
+                    var aiId = reader.GetInt();
+                    var iconType = reader.GetInt();
+                    var showName = reader.GetBool();
+                    string displayName = null;
+                    var hasName = reader.GetBool();
+                    if (hasName) displayName = reader.GetString();
 
-                        if (AITool.aiById.TryGetValue(aiId, out var cmc) && cmc)
-                        {
-                            AIName.RefreshNameIconWithRetries(cmc, iconType, showName, displayName).Forget();
-                        }
-                        else
-                        {
-                            Debug.LogWarning($"[AI_icon_Name 10s] cmc is null!");
-                        }
-                        // 若当前还没绑定上 cmc，就先忽略；每 10s 会兜底播一遍
-                        break;
-                    }
+                    if (AITool.aiById.TryGetValue(aiId, out var cmc) && cmc)
+                        AIName.RefreshNameIconWithRetries(cmc, iconType, showName, displayName).Forget();
+                    else
+                        Debug.LogWarning("[AI_icon_Name 10s] cmc is null!");
+                    // 若当前还没绑定上 cmc，就先忽略；每 10s 会兜底播一遍
+                    break;
+                }
 
                 case Op.PLAYER_DEAD_TREE:
+                {
+                    if (!IsServer) break;
+                    var pos = reader.GetV3cm();
+                    var rot = reader.GetQuaternion();
+
+                    var snap = ItemTool.ReadItemSnapshot(reader);
+                    var tmpRoot = ItemTool.BuildItemFromSnapshot(snap);
+                    if (!tmpRoot)
                     {
-                        if (!IsServer) break;
-                        Vector3 pos = reader.GetV3cm();
-                        Quaternion rot = reader.GetQuaternion();
-
-                        var snap = ItemTool.ReadItemSnapshot(reader);        
-                        var tmpRoot = ItemTool.BuildItemFromSnapshot(snap);  
-                        if (!tmpRoot) { Debug.LogWarning("[LOOT] PLAYER_DEAD_TREE BuildItemFromSnapshot failed."); break; }
-
-                        var deadPfb = LootManager.Instance.ResolveDeadLootPrefabOnServer();
-                        var box = InteractableLootbox.CreateFromItem(tmpRoot, pos + Vector3.up * 0.10f, rot, true, deadPfb, false);
-                        if (box) DeadLootBox.Instance.Server_OnDeadLootboxSpawned(box, null);   // 用新版重载：会发 lootUid + aiId + 随后 LOOT_STATE
-
-                        if (remoteCharacters.TryGetValue(peer, out var proxy) && proxy)
-                        {
-                            UnityEngine.Object.Destroy(proxy);
-                            remoteCharacters.Remove(peer);
-                        }
-
-                        // B) 广播给所有客户端：这个玩家的远程代理需要销毁
-                        if (playerStatuses.TryGetValue(peer, out var st) && !string.IsNullOrEmpty(st.EndPoint))
-                        {
-                            var w2 = writer; w2.Reset();
-                            w2.Put((byte)Op.REMOTE_DESPAWN);
-                            w2.Put(st.EndPoint);                 // 客户端用 EndPoint 当 key
-                            netManager.SendToAll(w2, DeliveryMethod.ReliableOrdered);
-                        }
-
-
-                        if (tmpRoot && tmpRoot.gameObject) UnityEngine.Object.Destroy(tmpRoot.gameObject);
+                        Debug.LogWarning("[LOOT] PLAYER_DEAD_TREE BuildItemFromSnapshot failed.");
                         break;
                     }
+
+                    var deadPfb = LootManager.Instance.ResolveDeadLootPrefabOnServer();
+                    var box = InteractableLootbox.CreateFromItem(tmpRoot, pos + Vector3.up * 0.10f, rot, true, deadPfb);
+                    if (box) DeadLootBox.Instance.Server_OnDeadLootboxSpawned(box, null); // 用新版重载：会发 lootUid + aiId + 随后 LOOT_STATE
+
+                    if (remoteCharacters.TryGetValue(peer, out var proxy) && proxy)
+                    {
+                        Destroy(proxy);
+                        remoteCharacters.Remove(peer);
+                    }
+
+                    // B) 广播给所有客户端：这个玩家的远程代理需要销毁
+                    if (playerStatuses.TryGetValue(peer, out var st) && !string.IsNullOrEmpty(st.EndPoint))
+                    {
+                        var w2 = writer;
+                        w2.Reset();
+                        w2.Put((byte)Op.REMOTE_DESPAWN);
+                        w2.Put(st.EndPoint); // 客户端用 EndPoint 当 key
+                        netManager.SendToAll(w2, DeliveryMethod.ReliableOrdered);
+                    }
+
+
+                    if (tmpRoot && tmpRoot.gameObject) Destroy(tmpRoot.gameObject);
+                    break;
+                }
 
                 case Op.LOOT_REQ_SPLIT:
-                    {
-                        if (!IsServer) break;
-                       COOPManager.LootNet.Server_HandleLootSplitRequest(peer, reader);
-                        break;
-                    }
+                {
+                    if (!IsServer) break;
+                    COOPManager.LootNet.Server_HandleLootSplitRequest(peer, reader);
+                    break;
+                }
 
                 case Op.REMOTE_DESPAWN:
-                    {
-                        if (IsServer) break;                 // 只客户端处理
-                        string id = reader.GetString();
-                        if (clientRemoteCharacters.TryGetValue(id, out var go) && go)
-                            UnityEngine.Object.Destroy(go);
-                        clientRemoteCharacters.Remove(id);
-                        break;
-                    }
+                {
+                    if (IsServer) break; // 只客户端处理
+                    var id = reader.GetString();
+                    if (clientRemoteCharacters.TryGetValue(id, out var go) && go)
+                        Destroy(go);
+                    clientRemoteCharacters.Remove(id);
+                    break;
+                }
 
                 case Op.AI_SEED_PATCH:
-                   COOPManager.AIHandle.HandleAiSeedPatch(reader);
+                    COOPManager.AIHandle.HandleAiSeedPatch(reader);
                     break;
 
                 case Op.DOOR_REQ_SET:
-                    {
-                        if (IsServer) COOPManager.Door.Server_HandleDoorSetRequest(peer, reader);
-                        break;
-                    }
+                {
+                    if (IsServer) COOPManager.Door.Server_HandleDoorSetRequest(peer, reader);
+                    break;
+                }
                 case Op.DOOR_STATE:
+                {
+                    if (!IsServer)
                     {
-                        if (!IsServer)
-                        {
-                            int k = reader.GetInt();
-                            bool cl = reader.GetBool();
-                            COOPManager.Door.Client_ApplyDoorState(k, cl);
-                        }
-                        break;
+                        var k = reader.GetInt();
+                        var cl = reader.GetBool();
+                        COOPManager.Door.Client_ApplyDoorState(k, cl);
                     }
 
+                    break;
+                }
+
                 case Op.LOOT_REQ_SLOT_UNPLUG:
-                    {
-                        if (IsServer) COOPManager.LootNet.Server_HandleLootSlotUnplugRequest(peer, reader);
-                        break;
-                    }
+                {
+                    if (IsServer) COOPManager.LootNet.Server_HandleLootSlotUnplugRequest(peer, reader);
+                    break;
+                }
                 case Op.LOOT_REQ_SLOT_PLUG:
-                    {
-                        if (IsServer) COOPManager.LootNet.Server_HandleLootSlotPlugRequest(peer, reader);
-                        break;
-                    }
+                {
+                    if (IsServer) COOPManager.LootNet.Server_HandleLootSlotPlugRequest(peer, reader);
+                    break;
+                }
 
 
                 case Op.SCENE_GATE_READY:
+                {
+                    if (IsServer)
                     {
-                        if (IsServer)
-                        {
-                            string pid = reader.GetString();
-                            string sid = reader.GetString();
+                        var pid = reader.GetString();
+                        var sid = reader.GetString();
 
-                            // 若主机还没确定 gate 的 sid，就用第一次 READY 的 sid
-                            if (string.IsNullOrEmpty(SceneNet.Instance._srvGateSid))
-                                SceneNet.Instance._srvGateSid = sid;
+                        // 若主机还没确定 gate 的 sid，就用第一次 READY 的 sid
+                        if (string.IsNullOrEmpty(SceneNet.Instance._srvGateSid))
+                            SceneNet.Instance._srvGateSid = sid;
 
-                            if (sid == SceneNet.Instance._srvGateSid)
-                            {
-                                SceneNet.Instance._srvGateReadyPids.Add(pid);
-
-                            }
-                        }
-                        break;
+                        if (sid == SceneNet.Instance._srvGateSid) SceneNet.Instance._srvGateReadyPids.Add(pid);
                     }
+
+                    break;
+                }
 
                 case Op.SCENE_GATE_RELEASE:
+                {
+                    if (!IsServer)
                     {
-                        if (!IsServer)
+                        var sid = reader.GetString();
+                        // 允许首次对齐或服务端/客户端估算不一致的情况
+                        if (string.IsNullOrEmpty(SceneNet.Instance._cliGateSid) || sid == SceneNet.Instance._cliGateSid)
                         {
-                            string sid = reader.GetString();
-                            // 允许首次对齐或服务端/客户端估算不一致的情况
-                            if (string.IsNullOrEmpty(SceneNet.Instance._cliGateSid) || sid == SceneNet.Instance._cliGateSid)
-                            {
-                                SceneNet.Instance._cliGateSid = sid;
-                                SceneNet.Instance._cliSceneGateReleased = true;
-                                HealthM.Instance.Client_ReportSelfHealth_IfReadyOnce();
-                            }
-                            else
-                            {
-                                Debug.LogWarning($"[GATE] release sid mismatch: srv={sid}, cli={SceneNet.Instance._cliGateSid} — accepting");
-                                SceneNet.Instance._cliGateSid = sid;                // 对齐后仍放行
-                                SceneNet.Instance._cliSceneGateReleased = true;
-                                HealthM.Instance.Client_ReportSelfHealth_IfReadyOnce();
-                            }
+                            SceneNet.Instance._cliGateSid = sid;
+                            SceneNet.Instance._cliSceneGateReleased = true;
+                            HealthM.Instance.Client_ReportSelfHealth_IfReadyOnce();
                         }
-                        break;
+                        else
+                        {
+                            Debug.LogWarning($"[GATE] release sid mismatch: srv={sid}, cli={SceneNet.Instance._cliGateSid} — accepting");
+                            SceneNet.Instance._cliGateSid = sid; // 对齐后仍放行
+                            SceneNet.Instance._cliSceneGateReleased = true;
+                            HealthM.Instance.Client_ReportSelfHealth_IfReadyOnce();
+                        }
                     }
+
+                    break;
+                }
 
 
                 case Op.PLAYER_HURT_EVENT:
                     if (!IsServer) HealthM.Instance.Client_ApplySelfHurtFromServer(reader);
                     break;
-
-
-
-
-
             }
 
             reader.Recycle();
-        }
-
-        void OnDestroy()
-        {
-           NetService.Instance.StopNetwork();
         }
 
         private void OnSceneLoaded_IndexDestructibles(Scene s, LoadSceneMode m)
@@ -1513,7 +1578,7 @@ namespace EscapeFromDuckovCoopMod
 
             if (!IsServer)
             {
-                HealthTool._cliInitHpReported = false;      // 允许再次上报
+                HealthTool._cliInitHpReported = false; // 允许再次上报
                 HealthM.Instance.Client_ReportSelfHealth_IfReadyOnce(); // 你已有的方法（只上报一次）
             }
 
@@ -1528,22 +1593,22 @@ namespace EscapeFromDuckovCoopMod
                 if (!IsServer) Send_ClientStatus.Instance.SendClientStatusUpdate();
                 else Send_LoaclPlayerStatus.Instance.SendPlayerStatusUpdate();
             }
-            catch { }
-
+            catch
+            {
+            }
         }
 
         private void OnLevelInitialized_IndexDestructibles()
         {
             if (!networkStarted) return;
-           COOPManager.destructible.BuildDestructibleIndex();
+            COOPManager.destructible.BuildDestructibleIndex();
         }
 
-
-        // 客户端：是否把远端 AI 全部常显（默认 true）
-        public bool Client_ForceShowAllRemoteAI = true;
-
-
+        public struct Pending
+        {
+            public Inventory inv;
+            public int srcPos;
+            public int count;
+        }
     }
-
 }
-

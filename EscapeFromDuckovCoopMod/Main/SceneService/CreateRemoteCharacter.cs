@@ -14,17 +14,14 @@
 // MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
 // GNU Affero General Public License for more details.
 
-﻿using Cysharp.Threading.Tasks;
+﻿using System.Collections.Generic;
+using Cysharp.Threading.Tasks;
 using Duckov.Utilities;
 using HarmonyLib;
 using ItemStatsSystem;
 using LiteNetLib;
 using LiteNetLib.Utils;
-using System;
-using System.Collections.Generic;
-using System.Linq;
-using System.Text;
-using System.Threading.Tasks;
+using Saves;
 using UnityEngine;
 using UnityEngine.AI;
 
@@ -42,6 +39,7 @@ namespace EscapeFromDuckovCoopMod
         private static Dictionary<NetPeer, GameObject> remoteCharacters => Service?.remoteCharacters;
         private static Dictionary<NetPeer, PlayerStatus> playerStatuses => Service?.playerStatuses;
         private static Dictionary<string, GameObject> clientRemoteCharacters => Service?.clientRemoteCharacters;
+
         public static async UniTask<GameObject> CreateRemoteCharacterAsync(NetPeer peer, Vector3 position, Quaternion rotation, string customFaceJson)
         {
             if (remoteCharacters.ContainsKey(peer) && remoteCharacters[peer] != null) return null;
@@ -49,7 +47,7 @@ namespace EscapeFromDuckovCoopMod
             var levelManager = LevelManager.Instance;
             if (levelManager == null || levelManager.MainCharacter == null) return null;
 
-            GameObject instance = GameObject.Instantiate(CharacterMainControl.Main.gameObject, position, rotation);
+            var instance = GameObject.Instantiate(CharacterMainControl.Main.gameObject, position, rotation);
             var characterModel = instance.GetComponent<CharacterMainControl>();
 
             //  cInventory = CharacterMainControl.Main.CharacterItem.Inventory;
@@ -57,12 +55,13 @@ namespace EscapeFromDuckovCoopMod
 
             var cmc = instance.GetComponent<CharacterMainControl>();
             COOPManager.StripAllHandItems(cmc);
-            var itemLoaded = await Saves.ItemSavesUtilities.LoadItem(LevelManager.MainCharacterItemSaveKey);
+            var itemLoaded = await ItemSavesUtilities.LoadItem(LevelManager.MainCharacterItemSaveKey);
             if (itemLoaded == null)
             {
                 itemLoaded = await ItemAssetsCollection.InstantiateAsync(GameplayDataSettings.ItemAssets.DefaultCharacterItemTypeID);
                 Debug.LogWarning("Item Loading failed");
             }
+
             Traverse.Create(characterModel).Field<Item>("characterItem").Value = itemLoaded;
             // Debug.Log(peer.EndPoint.ToString() + " CreateRemoteCharacterForClient");
             // 统一设置初始位姿
@@ -88,7 +87,9 @@ namespace EscapeFromDuckovCoopMod
                 COOPManager.ChangeBackpackModel(cm, null);
                 COOPManager.ChangeHeadsetModel(cm, null);
             }
-            catch { }
+            catch
+            {
+            }
 
 
             instance.AddComponent<RemoteReplicaTag>();
@@ -100,9 +101,9 @@ namespace EscapeFromDuckovCoopMod
             }
 
             var h = instance.GetComponentInChildren<Health>(true);
-            if (h) h.autoInit = false;            // ★ 阻止 Start()->Init() 把血直接回满
+            if (h) h.autoInit = false; // ★ 阻止 Start()->Init() 把血直接回满
             instance.AddComponent<AutoRequestHealthBar>(); // 你已有就不要重复
-                                                           // 主机创建完后立刻挂监听并推一次
+            // 主机创建完后立刻挂监听并推一次
             HealthTool.Server_HookOneHealth(peer, instance);
             instance.AddComponent<HostForceHealthBar>();
 
@@ -113,6 +114,7 @@ namespace EscapeFromDuckovCoopMod
             cmc.gameObject.SetActive(true);
             return instance;
         }
+
         public static async UniTask CreateRemoteCharacterForClient(string playerId, Vector3 position, Quaternion rotation, string customFaceJson)
         {
             if (NetService.Instance.IsSelfId(playerId)) return; // ★ 不给自己创建“远程自己”
@@ -124,14 +126,11 @@ namespace EscapeFromDuckovCoopMod
             if (levelManager == null || levelManager.MainCharacter == null) return;
 
 
-            GameObject instance = GameObject.Instantiate(CharacterMainControl.Main.gameObject, position, rotation);
+            var instance = GameObject.Instantiate(CharacterMainControl.Main.gameObject, position, rotation);
             var characterModel = instance.GetComponent<CharacterMainControl>();
 
-            var itemLoaded = await Saves.ItemSavesUtilities.LoadItem(LevelManager.MainCharacterItemSaveKey);
-            if (itemLoaded == null)
-            {
-                itemLoaded = await ItemAssetsCollection.InstantiateAsync(GameplayDataSettings.ItemAssets.DefaultCharacterItemTypeID);
-            }
+            var itemLoaded = await ItemSavesUtilities.LoadItem(LevelManager.MainCharacterItemSaveKey);
+            if (itemLoaded == null) itemLoaded = await ItemAssetsCollection.InstantiateAsync(GameplayDataSettings.ItemAssets.DefaultCharacterItemTypeID);
             Traverse.Create(characterModel).Field<Item>("characterItem").Value = itemLoaded;
 
             var cmc = instance.GetComponent<CharacterMainControl>();
@@ -172,7 +171,9 @@ namespace EscapeFromDuckovCoopMod
                 COOPManager.ChangeBackpackModel(cm, null);
                 COOPManager.ChangeHeadsetModel(cm, null);
             }
-            catch { }
+            catch
+            {
+            }
 
             instance.AddComponent<RemoteReplicaTag>();
             var anim = instance.GetComponentInChildren<Animator>(true);
@@ -210,7 +211,12 @@ namespace EscapeFromDuckovCoopMod
 
             // 2) 刚体改为运动由我们驱动
             var rb = go.GetComponentInChildren<Rigidbody>(true);
-            if (rb) { rb.isKinematic = true; rb.velocity = Vector3.zero; rb.angularVelocity = Vector3.zero; }
+            if (rb)
+            {
+                rb.isKinematic = true;
+                rb.velocity = Vector3.zero;
+                rb.angularVelocity = Vector3.zero;
+            }
 
             // 3) 确保 Animator 不做 root motion（动画仍会更新）
             var anim = go.GetComponentInChildren<Animator>(true);
@@ -229,6 +235,5 @@ namespace EscapeFromDuckovCoopMod
                 }
             }
         }
-
     }
 }

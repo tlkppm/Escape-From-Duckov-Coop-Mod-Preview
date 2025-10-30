@@ -14,23 +14,42 @@
 // MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
 // GNU Affero General Public License for more details.
 
-﻿using Duckov;
+﻿using System;
+using System.Collections.Generic;
+using System.Reflection;
+using Duckov;
 using HarmonyLib;
 using ItemStatsSystem;
+using ItemStatsSystem.Items;
 using LiteNetLib;
 using LiteNetLib.Utils;
-using System;
-using System.Collections.Generic;
-using System.Linq;
-using System.Reflection;
-using System.Text;
-using System.Threading.Tasks;
+using NodeCanvas.Framework;
+using NodeCanvas.StateMachines;
 using UnityEngine;
+using UnityEngine.SceneManagement;
+using Object = UnityEngine.Object;
 
 namespace EscapeFromDuckovCoopMod
 {
     public static class AITool
     {
+        private const float AUTOBIND_COOLDOWN = 0.20f; // 200ms：同一 aiId 的重试冷却
+        private const float AUTOBIND_RADIUS = 35f; // 近场搜索半径，可按需要 25~40f
+        private const QueryTriggerInteraction AUTOBIND_QTI = QueryTriggerInteraction.Collide;
+        private const int AUTOBIND_LAYERMASK = ~0; // 如有专用 Layer，可替换~~~~~~oi
+        private const QueryTriggerInteraction QTI = QueryTriggerInteraction.Collide;
+        private const int LAYER_MASK_ANY = ~0;
+        public static readonly Dictionary<int, CharacterMainControl> aiById = new Dictionary<int, CharacterMainControl>();
+
+        private static readonly Dictionary<int, int> _aiSerialPerRoot = new Dictionary<int, int>();
+        public static bool _aiSceneReady;
+
+        // —— AutoBind 限频/范围参数 —— 
+        private static readonly Dictionary<int, float> _lastAutoBindTryTime = new Dictionary<int, float>();
+
+        private static readonly Collider[] _corpseScanBuf = new Collider[64];
+
+        public static readonly HashSet<int> _cliAiDeathFxOnce = new HashSet<int>();
         private static NetService Service => NetService.Instance;
         private static bool IsServer => Service != null && Service.IsServer;
         private static NetManager netManager => Service?.netManager;
@@ -41,23 +60,6 @@ namespace EscapeFromDuckovCoopMod
         private static Dictionary<NetPeer, GameObject> remoteCharacters => Service?.remoteCharacters;
         private static Dictionary<NetPeer, PlayerStatus> playerStatuses => Service?.playerStatuses;
         private static Dictionary<string, GameObject> clientRemoteCharacters => Service?.clientRemoteCharacters;
-        public static readonly Dictionary<int, CharacterMainControl> aiById = new Dictionary<int, CharacterMainControl>();
-
-        private static readonly Dictionary<int, int> _aiSerialPerRoot = new Dictionary<int, int>();
-        public static bool _aiSceneReady;
-
-        // —— AutoBind 限频/范围参数 —— 
-        private static readonly Dictionary<int, float> _lastAutoBindTryTime = new Dictionary<int, float>();
-        private const float AUTOBIND_COOLDOWN = 0.20f; // 200ms：同一 aiId 的重试冷却
-        private const float AUTOBIND_RADIUS = 35f;   // 近场搜索半径，可按需要 25~40f
-        private const QueryTriggerInteraction AUTOBIND_QTI = QueryTriggerInteraction.Collide;
-        private const int AUTOBIND_LAYERMASK = ~0;    // 如有专用 Layer，可替换~~~~~~oi
-
-        private static readonly Collider[] _corpseScanBuf = new Collider[64];
-        private const QueryTriggerInteraction QTI = QueryTriggerInteraction.Collide;
-        private const int LAYER_MASK_ANY = ~0;
-
-        public static readonly HashSet<int> _cliAiDeathFxOnce = new HashSet<int>();
 
         public static int StableRootId(CharacterSpawnerRoot r)
         {
@@ -65,23 +67,26 @@ namespace EscapeFromDuckovCoopMod
             if (r.SpawnerGuid != 0) return r.SpawnerGuid;
 
             // 取 relatedScene（Init 会设置）；拿不到就退化为当前场景索引
-            int sceneIndex = -1;
+            var sceneIndex = -1;
             try
             {
                 var fi = typeof(CharacterSpawnerRoot).GetField("relatedScene", BindingFlags.NonPublic | BindingFlags.Instance);
                 if (fi != null) sceneIndex = (int)fi.GetValue(r);
             }
-            catch { }
-            if (sceneIndex < 0) sceneIndex = UnityEngine.SceneManagement.SceneManager.GetActiveScene().buildIndex;
+            catch
+            {
+            }
+
+            if (sceneIndex < 0) sceneIndex = SceneManager.GetActiveScene().buildIndex;
 
             // 世界坐标量化到 0.1m，避免浮点抖动
-            Vector3 p = r.transform.position;
-            int qx = Mathf.RoundToInt(p.x * 10f);
-            int qy = Mathf.RoundToInt(p.y * 10f);
-            int qz = Mathf.RoundToInt(p.z * 10f);
+            var p = r.transform.position;
+            var qx = Mathf.RoundToInt(p.x * 10f);
+            var qy = Mathf.RoundToInt(p.y * 10f);
+            var qz = Mathf.RoundToInt(p.z * 10f);
 
             // 名称 + 位置 + 场景索引 → FNV1a
-            string key = $"{sceneIndex}:{r.name}:{qx},{qy},{qz}";
+            var key = $"{sceneIndex}:{r.name}:{qx},{qy},{qz}";
             return StableHash(key);
         }
 
@@ -90,22 +95,25 @@ namespace EscapeFromDuckovCoopMod
             if (r == null) return 0;
 
             // 不看 SpawnerGuid，强制用 场景索引 + 名称 + 量化坐标
-            int sceneIndex = -1;
+            var sceneIndex = -1;
             try
             {
                 var fi = typeof(CharacterSpawnerRoot).GetField("relatedScene", BindingFlags.NonPublic | BindingFlags.Instance);
                 if (fi != null) sceneIndex = (int)fi.GetValue(r);
             }
-            catch { }
+            catch
+            {
+            }
+
             if (sceneIndex < 0)
-                sceneIndex = UnityEngine.SceneManagement.SceneManager.GetActiveScene().buildIndex;
+                sceneIndex = SceneManager.GetActiveScene().buildIndex;
 
-            Vector3 p = r.transform.position;
-            int qx = Mathf.RoundToInt(p.x * 10f);
-            int qy = Mathf.RoundToInt(p.y * 10f);
-            int qz = Mathf.RoundToInt(p.z * 10f);
+            var p = r.transform.position;
+            var qx = Mathf.RoundToInt(p.x * 10f);
+            var qy = Mathf.RoundToInt(p.y * 10f);
+            var qz = Mathf.RoundToInt(p.z * 10f);
 
-            string key = $"{sceneIndex}:{r.name}:{qx},{qy},{qz}";
+            var key = $"{sceneIndex}:{r.name}:{qx},{qy},{qz}";
             return StableHash(key);
         }
 
@@ -113,7 +121,7 @@ namespace EscapeFromDuckovCoopMod
         {
             if (aiById.TryGetValue(id, out var cmc) && cmc)
             {
-                if (!IsRealAI(cmc)) return false;  // 保险
+                if (!IsRealAI(cmc)) return false; // 保险
                 // 确保 AI 代理上有 NetAiFollower 与 RemoteReplicaTag（禁用本地 MagicBlend.Update）
                 var follower = cmc.GetComponent<NetAiFollower>();
                 if (!follower) follower = cmc.gameObject.AddComponent<NetAiFollower>();
@@ -122,6 +130,7 @@ namespace EscapeFromDuckovCoopMod
                 follower.SetAnim(st.speed, st.dirX, st.dirY, st.hand, st.gunReady, st.dashing);
                 return true;
             }
+
             return false;
         }
 
@@ -133,10 +142,7 @@ namespace EscapeFromDuckovCoopMod
             if (cmc == CharacterMainControl.Main)
                 return false;
 
-            if (cmc.Team == Teams.player)
-            {
-                return false;
-            }
+            if (cmc.Team == Teams.player) return false;
 
             var lm = LevelManager.Instance;
             if (lm != null)
@@ -147,42 +153,43 @@ namespace EscapeFromDuckovCoopMod
 
             // 过滤远程玩家（remoteCharacters 管理的对象）
             foreach (var go in remoteCharacters.Values)
-            {
                 if (go != null && cmc.gameObject == go)
                     return false;
-            }
             foreach (var go in clientRemoteCharacters.Values)
-            {
                 if (go != null && cmc.gameObject == go)
                     return false;
-            }
 
             return true;
         }
 
         public static CharacterMainControl TryAutoBindAi(int aiId, Vector3 snapPos)
         {
-            float best = 30f; // 原 5f -> 放宽，必要时可调到 40f
+            var best = 30f; // 原 5f -> 放宽，必要时可调到 40f
             CharacterMainControl bestCmc = null;
 
-            var all = UnityEngine.Object.FindObjectsOfType<CharacterMainControl>(true);
+            var all = Object.FindObjectsOfType<CharacterMainControl>(true);
             foreach (var c in all)
             {
                 if (!c || LevelManager.Instance.MainCharacter == c) continue;
                 if (aiById.ContainsValue(c)) continue;
 
-                Vector2 a = new Vector2(c.transform.position.x, c.transform.position.z);
-                Vector2 b = new Vector2(snapPos.x, snapPos.z);
-                float d = Vector2.Distance(a, b);
+                var a = new Vector2(c.transform.position.x, c.transform.position.z);
+                var b = new Vector2(snapPos.x, snapPos.z);
+                var d = Vector2.Distance(a, b);
 
-                if (d < best) { best = d; bestCmc = c; }
+                if (d < best)
+                {
+                    best = d;
+                    bestCmc = c;
+                }
             }
 
             if (bestCmc != null)
             {
-                COOPManager.AIHandle.RegisterAi(aiId, bestCmc);        // ↓ 第②步里我们会让 RegisterAi 在客户端同时挂 Follower
+                COOPManager.AIHandle.RegisterAi(aiId, bestCmc); // ↓ 第②步里我们会让 RegisterAi 在客户端同时挂 Follower
                 if (COOPManager.AIHandle.freezeAI) TryFreezeAI(bestCmc);
             }
+
             return bestCmc;
         }
 
@@ -190,7 +197,7 @@ namespace EscapeFromDuckovCoopMod
         public static void Client_ForceFreezeAllAI()
         {
             if (!networkStarted || IsServer) return;
-            var all = UnityEngine.Object.FindObjectsOfType<AICharacterController>(true);
+            var all = Object.FindObjectsOfType<AICharacterController>(true);
             foreach (var aic in all)
             {
                 if (!aic) continue;
@@ -208,9 +215,15 @@ namespace EscapeFromDuckovCoopMod
             return n;
         }
 
-        public static void ResetAiSerials() => _aiSerialPerRoot.Clear();
+        public static void ResetAiSerials()
+        {
+            _aiSerialPerRoot.Clear();
+        }
 
-        public static void MarkAiSceneReady() => _aiSceneReady = true;
+        public static void MarkAiSceneReady()
+        {
+            _aiSceneReady = true;
+        }
 
 
         public static void ApplyAiTransform(int aiId, Vector3 p, Vector3 f)
@@ -220,6 +233,7 @@ namespace EscapeFromDuckovCoopMod
                 cmc = TryAutoBindAiWithBudget(aiId, p); // 新版：窄范围 + 限频
                 if (!cmc) return; // 等下一帧
             }
+
             if (!IsRealAI(cmc)) return;
 
             var follower = cmc.GetComponent<NetAiFollower>() ?? cmc.gameObject.AddComponent<NetAiFollower>();
@@ -228,18 +242,17 @@ namespace EscapeFromDuckovCoopMod
 
         public static CharacterMainControl TryAutoBindAiWithBudget(int aiId, Vector3 snapPos)
         {
-
             // 1) 限频：同一 aiId 在冷却期内直接跳过
-            if (_lastAutoBindTryTime.TryGetValue(aiId, out var last) && (Time.time - last) < AUTOBIND_COOLDOWN)
+            if (_lastAutoBindTryTime.TryGetValue(aiId, out var last) && Time.time - last < AUTOBIND_COOLDOWN)
                 return null;
             _lastAutoBindTryTime[aiId] = Time.time;
 
             // 2) 近场搜索：用 OverlapSphere 缩小枚举规模
             CharacterMainControl best = null;
-            float bestSqr = float.MaxValue;
+            var bestSqr = float.MaxValue;
 
             var cols = Physics.OverlapSphere(snapPos, AUTOBIND_RADIUS, AUTOBIND_LAYERMASK, AUTOBIND_QTI);
-            for (int i = 0; i < cols.Length; i++)
+            for (var i = 0; i < cols.Length; i++)
             {
                 var c = cols[i];
                 if (!c) continue;
@@ -252,24 +265,28 @@ namespace EscapeFromDuckovCoopMod
 
                 if (aiById.ContainsValue(cmc)) continue; // 已被别的 aiId 占用
 
-                float d2 = (cmc.transform.position - snapPos).sqrMagnitude;
-                if (d2 < bestSqr) { bestSqr = d2; best = cmc; }
+                var d2 = (cmc.transform.position - snapPos).sqrMagnitude;
+                if (d2 < bestSqr)
+                {
+                    bestSqr = d2;
+                    best = cmc;
+                }
             }
 
             if (best != null)
             {
                 if (!IsRealAI(best)) return null;
 
-               COOPManager.AIHandle.RegisterAi(aiId, best);                 // 已有：登记 &（在客户端）自动挂 NetAiFollower
-                if (COOPManager.AIHandle.freezeAI) TryFreezeAI(best);        // 你已有的“冻结”辅助（可选）
+                COOPManager.AIHandle.RegisterAi(aiId, best); // 已有：登记 &（在客户端）自动挂 NetAiFollower
+                if (COOPManager.AIHandle.freezeAI) TryFreezeAI(best); // 你已有的“冻结”辅助（可选）
                 return best;
             }
 
             // 3) 罕见兜底：偶尔扫一次 NetAiTag 做精确匹配（低频触发）
-            if ((Time.frameCount % 20) == 0) // 大约每 20 帧才做一次全局查看
+            if (Time.frameCount % 20 == 0) // 大约每 20 帧才做一次全局查看
             {
-                var tags = UnityEngine.Object.FindObjectsOfType<NetAiTag>(true);
-                for (int i = 0; i < tags.Length; i++)
+                var tags = Object.FindObjectsOfType<NetAiTag>(true);
+                for (var i = 0; i < tags.Length; i++)
                 {
                     var tag = tags[i];
                     if (!tag || tag.aiId != aiId) continue;
@@ -294,24 +311,26 @@ namespace EscapeFromDuckovCoopMod
             if (equipmentController == null) return equipmentList;
 
             var slotNames = new[] { "armorSlot", "helmatSlot", "faceMaskSlot", "backpackSlot", "headsetSlot" };
-            var slotHashes = new[] { CharacterEquipmentController.armorHash, CharacterEquipmentController.helmatHash, CharacterEquipmentController.faceMaskHash, CharacterEquipmentController.backpackHash, CharacterEquipmentController.headsetHash };
-
-            for (int i = 0; i < slotNames.Length; i++)
+            var slotHashes = new[]
             {
+                CharacterEquipmentController.armorHash, CharacterEquipmentController.helmatHash, CharacterEquipmentController.faceMaskHash,
+                CharacterEquipmentController.backpackHash, CharacterEquipmentController.headsetHash
+            };
+
+            for (var i = 0; i < slotNames.Length; i++)
                 try
                 {
-                    var slotField = Traverse.Create(equipmentController).Field<ItemStatsSystem.Items.Slot>(slotNames[i]);
+                    var slotField = Traverse.Create(equipmentController).Field<Slot>(slotNames[i]);
                     if (slotField.Value == null) continue;
 
                     var slot = slotField.Value;
-                    string itemId = (slot?.Content != null) ? slot.Content.TypeID.ToString() : "";
+                    var itemId = slot?.Content != null ? slot.Content.TypeID.ToString() : "";
                     equipmentList.Add(new EquipmentSyncData { SlotHash = slotHashes[i], ItemId = itemId });
                 }
                 catch (Exception ex)
                 {
                     Debug.LogError($"获取槽位 {slotNames[i]} 时发生错误: {ex.Message}");
                 }
-            }
 
             return equipmentList;
         }
@@ -324,25 +343,28 @@ namespace EscapeFromDuckovCoopMod
 
             if (!IsRealAI(cmc)) return;
 
-            var all = UnityEngine.Object.FindObjectsOfType<AICharacterController>(true);
+            var all = Object.FindObjectsOfType<AICharacterController>(true);
             foreach (var aic in all)
             {
                 if (!aic) continue;
                 aic.enabled = false;
             }
-            var all1 = UnityEngine.Object.FindObjectsOfType<AI_PathControl>(true);
+
+            var all1 = Object.FindObjectsOfType<AI_PathControl>(true);
             foreach (var aic in all1)
             {
                 if (!aic) continue;
                 aic.enabled = false;
             }
-            var all2 = UnityEngine.Object.FindObjectsOfType<NodeCanvas.StateMachines.FSMOwner>(true);
+
+            var all2 = Object.FindObjectsOfType<FSMOwner>(true);
             foreach (var aic in all2)
             {
                 if (!aic) continue;
                 aic.enabled = false;
             }
-            var all3 = UnityEngine.Object.FindObjectsOfType<NodeCanvas.Framework.Blackboard>(true);
+
+            var all3 = Object.FindObjectsOfType<Blackboard>(true);
             foreach (var aic in all3)
             {
                 if (!aic) continue;
@@ -352,18 +374,42 @@ namespace EscapeFromDuckovCoopMod
 
         public static int StableHash(string s)
         {
-            unchecked { uint h = 2166136261; for (int i = 0; i < s.Length; i++) { h ^= s[i]; h *= 16777619; } return (int)h; }
+            unchecked
+            {
+                var h = 2166136261;
+                for (var i = 0; i < s.Length; i++)
+                {
+                    h ^= s[i];
+                    h *= 16777619;
+                }
+
+                return (int)h;
+            }
         }
+
         public static string TransformPath(Transform t)
         {
-            var stack = new System.Collections.Generic.Stack<string>();
-            while (t != null) { stack.Push(t.name); t = t.parent; }
+            var stack = new Stack<string>();
+            while (t != null)
+            {
+                stack.Push(t.name);
+                t = t.parent;
+            }
+
             return string.Join("/", stack);
         }
 
         public static int DeriveSeed(int a, int b)
         {
-            unchecked { uint h = 2166136261; h ^= (uint)a; h *= 16777619; h ^= (uint)b; h *= 16777619; return (int)h; }
+            unchecked
+            {
+                var h = 2166136261;
+                h ^= (uint)a;
+                h *= 16777619;
+                h ^= (uint)b;
+                h *= 16777619;
+                return (int)h;
+            }
         }
 
         public static void EnsureMagicBlendBound(CharacterMainControl cmc)
@@ -399,7 +445,7 @@ namespace EscapeFromDuckovCoopMod
             {
                 anim.cullingMode = AnimatorCullingMode.AlwaysAnimate;
                 anim.updateMode = AnimatorUpdateMode.Normal;
-                int idx = anim.GetLayerIndex("MeleeAttack");
+                var idx = anim.GetLayerIndex("MeleeAttack");
                 if (idx >= 0) anim.SetLayerWeight(idx, 0f);
             }
         }
@@ -411,7 +457,7 @@ namespace EscapeFromDuckovCoopMod
             try
             {
                 CharacterMainControl best = null;
-                float bestSqr = radius * radius;
+                var bestSqr = radius * radius;
 
                 // 1) 先用你已有的 aiById 做 O(n) 精确筛选（不扫全场）
                 try
@@ -421,23 +467,31 @@ namespace EscapeFromDuckovCoopMod
                         var cmc = kv.Value;
                         if (!cmc || cmc.IsMainCharacter) continue;
 
-                        bool isAI = cmc.GetComponent<AICharacterController>() != null
-                                 || cmc.GetComponent<NetAiTag>() != null;
+                        var isAI = cmc.GetComponent<AICharacterController>() != null
+                                   || cmc.GetComponent<NetAiTag>() != null;
                         if (!isAI) continue;
 
-                        var p = cmc.transform.position; p.y = 0f;
-                        var q = pos; q.y = 0f;
-                        float d2 = (p - q).sqrMagnitude;
-                        if (d2 < bestSqr) { best = cmc; bestSqr = d2; }
+                        var p = cmc.transform.position;
+                        p.y = 0f;
+                        var q = pos;
+                        q.y = 0f;
+                        var d2 = (p - q).sqrMagnitude;
+                        if (d2 < bestSqr)
+                        {
+                            best = cmc;
+                            bestSqr = d2;
+                        }
                     }
                 }
-                catch { }
+                catch
+                {
+                }
 
                 // 2) 仍未命中时，用“局部物理探测”替代全场景扫描（无 GC）
                 if (!best)
                 {
-                    int n = Physics.OverlapSphereNonAlloc(pos, radius, _corpseScanBuf, LAYER_MASK_ANY, QTI);
-                    for (int i = 0; i < n; i++)
+                    var n = Physics.OverlapSphereNonAlloc(pos, radius, _corpseScanBuf, LAYER_MASK_ANY, QTI);
+                    for (var i = 0; i < n; i++)
                     {
                         var c = _corpseScanBuf[i];
                         if (!c) continue;
@@ -445,22 +499,32 @@ namespace EscapeFromDuckovCoopMod
                         var cmc = c.GetComponentInParent<CharacterMainControl>();
                         if (!cmc || cmc.IsMainCharacter) continue;
 
-                        bool isAI = cmc.GetComponent<AICharacterController>() != null
-                                 || cmc.GetComponent<NetAiTag>() != null;
+                        var isAI = cmc.GetComponent<AICharacterController>() != null
+                                   || cmc.GetComponent<NetAiTag>() != null;
                         if (!isAI) continue;
 
-                        var p = cmc.transform.position; p.y = 0f;
-                        var q = pos; q.y = 0f;
-                        float d2 = (p - q).sqrMagnitude;
-                        if (d2 < bestSqr) { best = cmc; bestSqr = d2; }
+                        var p = cmc.transform.position;
+                        p.y = 0f;
+                        var q = pos;
+                        q.y = 0f;
+                        var d2 = (p - q).sqrMagnitude;
+                        if (d2 < bestSqr)
+                        {
+                            best = cmc;
+                            bestSqr = d2;
+                        }
                     }
                 }
 
 
                 if (best)
                 {
-                    DamageInfo DamageInfo = new DamageInfo { armorBreak = 999f, damageValue = 9999f, fromWeaponItemID = CharacterMainControl.Main.CurrentHoldItemAgent.Item.TypeID, damageType = DamageTypes.normal, fromCharacter = CharacterMainControl.Main, finalDamage = 9999f, toDamageReceiver = best.mainDamageReceiver };
-                    EXPManager.AddExp(Traverse.Create(best.Health).Field<Item>("item").Value.GetInt("Exp", 0));
+                    var DamageInfo = new DamageInfo
+                    {
+                        armorBreak = 999f, damageValue = 9999f, fromWeaponItemID = CharacterMainControl.Main.CurrentHoldItemAgent.Item.TypeID,
+                        damageType = DamageTypes.normal, fromCharacter = CharacterMainControl.Main, finalDamage = 9999f, toDamageReceiver = best.mainDamageReceiver
+                    };
+                    EXPManager.AddExp(Traverse.Create(best.Health).Field<Item>("item").Value.GetInt("Exp"));
 
                     // 经验共享获取，共享击杀lol
 
@@ -472,17 +536,19 @@ namespace EscapeFromDuckovCoopMod
                     {
                         var tag = best.GetComponent<NetAiTag>();
                         if (tag != null)
-                        {
                             if (_cliAiDeathFxOnce.Add(tag.aiId))
-                               FxManager.Client_PlayAiDeathFxAndSfx(best);
-                        }
+                                FxManager.Client_PlayAiDeathFxAndSfx(best);
                     }
-                    catch { }
+                    catch
+                    {
+                    }
 
-                    UnityEngine.Object.Destroy(best.gameObject);
+                    Object.Destroy(best.gameObject);
                 }
             }
-            catch { }
+            catch
+            {
+            }
         }
 
         public static bool TryFireOnDead(Health health, DamageInfo di)
@@ -493,39 +559,30 @@ namespace EscapeFromDuckovCoopMod
                 var fi = AccessTools.Field(typeof(Health), "OnDead");
                 if (fi == null)
                 {
-                    UnityEngine.Debug.LogError("[HEALTH] 找不到 OnDead 字段（可能是自定义 add/remove 事件）");
+                    Debug.LogError("[HEALTH] 找不到 OnDead 字段（可能是自定义 add/remove 事件）");
                     return false;
                 }
 
                 var del = fi.GetValue(null) as Action<Health, DamageInfo>;
                 if (del == null)
-                {
                     // 没有任何订阅者就不会触发
                     return false;
-                }
 
                 del.Invoke(health, di);
                 return true;
             }
             catch (Exception e)
             {
-                UnityEngine.Debug.LogError("[HEALTH] 触发 OnDead 失败: " + e);
+                Debug.LogError("[HEALTH] 触发 OnDead 失败: " + e);
                 return false;
             }
         }
-
-
-
-
-
-
-
     }
+
     public struct AiAnimState
     {
-        public  float speed, dirX, dirY;
-        public  int hand;
-        public  bool gunReady, dashing;
+        public float speed, dirX, dirY;
+        public int hand;
+        public bool gunReady, dashing;
     }
-
 }

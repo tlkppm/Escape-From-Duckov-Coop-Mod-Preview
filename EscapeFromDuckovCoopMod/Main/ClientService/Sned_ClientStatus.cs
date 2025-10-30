@@ -16,18 +16,12 @@
 
 ﻿using LiteNetLib;
 using LiteNetLib.Utils;
-using System;
-using System.Collections.Generic;
-using System.Linq;
-using System.Text;
-using System.Threading.Tasks;
 using UnityEngine;
 
 namespace EscapeFromDuckovCoopMod
 {
-    public class Send_ClientStatus:MonoBehaviour
+    public class Send_ClientStatus : MonoBehaviour
     {
-
         public static Send_ClientStatus Instance;
 
         private NetService Service => NetService.Instance;
@@ -36,6 +30,7 @@ namespace EscapeFromDuckovCoopMod
         private NetDataWriter writer => Service?.writer;
         private NetPeer connectedPeer => Service?.connectedPeer;
         private PlayerStatus localPlayerStatus => Service?.localPlayerStatus;
+
         public void Init()
         {
             Debug.Log("ModBehaviour Awake");
@@ -51,7 +46,7 @@ namespace EscapeFromDuckovCoopMod
             var weaponList = LoaclPlayerManager.Instance.GetLocalWeapons();
 
             writer.Reset();
-            writer.Put((byte)Op.CLIENT_STATUS_UPDATE);     // opcode
+            writer.Put((byte)Op.CLIENT_STATUS_UPDATE); // opcode
             writer.Put(localPlayerStatus.EndPoint);
             writer.Put(localPlayerStatus.PlayerName);
             writer.Put(localPlayerStatus.IsInGame);
@@ -70,13 +65,5 @@ namespace EscapeFromDuckovCoopMod
 
             connectedPeer.Send(writer, DeliveryMethod.ReliableOrdered);
         }
-
-
-
-     
-
-
-
-
     }
 }

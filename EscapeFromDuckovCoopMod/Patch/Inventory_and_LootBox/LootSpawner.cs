@@ -14,46 +14,38 @@
 // MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
 // GNU Affero General Public License for more details.
 
-﻿using HarmonyLib;
-using System;
-using System.Collections.Generic;
-using System.Linq;
-using System.Text;
-using System.Threading.Tasks;
+﻿using Duckov.Utilities;
+using HarmonyLib;
 
 namespace EscapeFromDuckovCoopMod
 {
-    [HarmonyPatch(typeof(Duckov.Utilities.LootSpawner), "Start")]
-    static class Patch_LootSpawner_Start_PrimeNeedInspect
+    [HarmonyPatch(typeof(LootSpawner), "Start")]
+    internal static class Patch_LootSpawner_Start_PrimeNeedInspect
     {
-        static void Postfix(Duckov.Utilities.LootSpawner __instance)
+        private static void Postfix(LootSpawner __instance)
         {
             var lb = __instance.GetComponent<InteractableLootbox>();
             WorldLootPrime.PrimeIfClient(lb);
         }
     }
 
-    [HarmonyPatch(typeof(Duckov.Utilities.LootSpawner), "Setup")]
-    static class Patch_LootSpawner_Setup_PrimeNeedInspect
+    [HarmonyPatch(typeof(LootSpawner), "Setup")]
+    internal static class Patch_LootSpawner_Setup_PrimeNeedInspect
     {
-        static void Postfix(Duckov.Utilities.LootSpawner __instance)
+        private static void Postfix(LootSpawner __instance)
         {
             var lb = __instance.GetComponent<InteractableLootbox>();
             WorldLootPrime.PrimeIfClient(lb);
         }
     }
 
-    [HarmonyPatch(typeof(Duckov.Utilities.LootBoxLoader), "Awake")]
-    static class Patch_LootBoxLoader_Awake_PrimeNeedInspect
+    [HarmonyPatch(typeof(LootBoxLoader), "Awake")]
+    internal static class Patch_LootBoxLoader_Awake_PrimeNeedInspect
     {
-        static void Postfix(Duckov.Utilities.LootBoxLoader __instance)
+        private static void Postfix(LootBoxLoader __instance)
         {
             var lb = __instance.GetComponent<InteractableLootbox>();
             WorldLootPrime.PrimeIfClient(lb);
         }
     }
-
-
-
-
 }

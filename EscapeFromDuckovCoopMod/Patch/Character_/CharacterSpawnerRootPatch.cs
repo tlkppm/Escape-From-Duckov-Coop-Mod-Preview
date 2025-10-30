@@ -14,31 +14,33 @@
 // MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
 // GNU Affero General Public License for more details.
 
-﻿using HarmonyLib;
-using System;
+﻿using System;
+using System.Collections;
 using System.Collections.Generic;
-using System.Linq;
 using System.Reflection;
-using System.Text;
-using System.Threading.Tasks;
+using Duckov.Scenes;
+using HarmonyLib;
 using UnityEngine;
+using UnityEngine.SceneManagement;
+using Random = UnityEngine.Random;
 
 namespace EscapeFromDuckovCoopMod
 {
     [HarmonyPatch(typeof(CharacterSpawnerRoot), "StartSpawn")]
-    static class Patch_Root_StartSpawn
+    internal static class Patch_Root_StartSpawn
     {
-        static readonly System.Collections.Generic.HashSet<int> _waiting = new HashSet<int>();
-        static readonly System.Collections.Generic.Stack<UnityEngine.Random.State> _rngStack = new Stack<UnityEngine.Random.State>();
-        static readonly System.Reflection.MethodInfo _miStartSpawn =
+        private static readonly HashSet<int> _waiting = new HashSet<int>();
+        private static readonly Stack<Random.State> _rngStack = new Stack<Random.State>();
+
+        private static readonly MethodInfo _miStartSpawn =
             AccessTools.Method(typeof(CharacterSpawnerRoot), "StartSpawn");
 
-        static bool Prefix(CharacterSpawnerRoot __instance)
+        private static bool Prefix(CharacterSpawnerRoot __instance)
         {
             try
             {
                 var mod = ModBehaviourF.Instance;
-                int rootId = AITool.StableRootId(__instance);
+                var rootId = AITool.StableRootId(__instance);
 
                 // 核心科技:) 种子未到 → 阻止原版生成，并排队等待；到种子后再反射调用 StartSpawn()
                 if (!mod.IsServer && !COOPManager.AIHandle.aiRootSeeds.ContainsKey(rootId))
@@ -49,15 +51,18 @@ namespace EscapeFromDuckovCoopMod
                 }
 
                 // 进入“随机数种子作用域”
-                int useSeed = mod.IsServer ? AITool.DeriveSeed(COOPManager.AIHandle.sceneSeed, rootId) : COOPManager.AIHandle.aiRootSeeds[rootId];
-                _rngStack.Push(UnityEngine.Random.state);
-                UnityEngine.Random.InitState(useSeed);
+                var useSeed = mod.IsServer ? AITool.DeriveSeed(COOPManager.AIHandle.sceneSeed, rootId) : COOPManager.AIHandle.aiRootSeeds[rootId];
+                _rngStack.Push(Random.state);
+                Random.InitState(useSeed);
                 return true;
             }
-            catch { return true; }
+            catch
+            {
+                return true;
+            }
         }
 
-        static void ForceActivateHierarchy(Transform t)
+        private static void ForceActivateHierarchy(Transform t)
         {
             while (t)
             {
@@ -66,7 +71,7 @@ namespace EscapeFromDuckovCoopMod
             }
         }
 
-        static System.Collections.IEnumerator WaitSeedAndSpawn(CharacterSpawnerRoot inst, int rootId)
+        private static IEnumerator WaitSeedAndSpawn(CharacterSpawnerRoot inst, int rootId)
         {
             var mod = ModBehaviourF.Instance;
             while (mod && !COOPManager.AIHandle.aiRootSeeds.ContainsKey(rootId)) yield return null;
@@ -79,37 +84,39 @@ namespace EscapeFromDuckovCoopMod
                 ForceActivateHierarchy(inst.transform);
 
                 if (_miStartSpawn != null)
-                    _miStartSpawn.Invoke(inst, null);  // 反射调用 private StartSpawn()
+                    _miStartSpawn.Invoke(inst, null); // 反射调用 private StartSpawn()
             }
         }
 
-        static void Postfix(CharacterSpawnerRoot __instance)
+        private static void Postfix(CharacterSpawnerRoot __instance)
         {
             try
             {
-                if (_rngStack.Count > 0) UnityEngine.Random.state = _rngStack.Pop();
+                if (_rngStack.Count > 0) Random.state = _rngStack.Pop();
 
                 // 你原有的“给 AI 打标签 / 注册 / 主机广播负载”逻辑保留
                 var list = Traverse.Create(__instance)
-                    .Field<System.Collections.Generic.List<CharacterMainControl>>("createdCharacters")
+                    .Field<List<CharacterMainControl>>("createdCharacters")
                     .Value;
 
                 if (list != null && COOPManager.AIHandle.freezeAI)
-                    foreach (var c in list) AITool.TryFreezeAI(c);
+                    foreach (var c in list)
+                        AITool.TryFreezeAI(c);
 
                 if (list != null)
                 {
                     var mod = ModBehaviourF.Instance;
-                    int rootId = AITool.StableRootId(__instance);
+                    var rootId = AITool.StableRootId(__instance);
 
                     // 按“名称 + 量化坐标 + InstanceID”稳定排序，避免回调时序导致乱序
                     var ordered = new List<CharacterMainControl>(list);
                     ordered.RemoveAll(c => !c);
                     ordered.Sort((a, b) =>
                     {
-                        int n = string.Compare(a.name, b.name, StringComparison.Ordinal);
+                        var n = string.Compare(a.name, b.name, StringComparison.Ordinal);
                         if (n != 0) return n;
-                        var pa = a.transform.position; var pb = b.transform.position;
+                        var pa = a.transform.position;
+                        var pb = b.transform.position;
                         int ax = Mathf.RoundToInt(pa.x * 100f), az = Mathf.RoundToInt(pa.z * 100f), ay = Mathf.RoundToInt(pa.y * 100f);
                         int bx = Mathf.RoundToInt(pb.x * 100f), bz = Mathf.RoundToInt(pb.z * 100f), by = Mathf.RoundToInt(pb.y * 100f);
                         if (ax != bx) return ax.CompareTo(bx);
@@ -118,12 +125,12 @@ namespace EscapeFromDuckovCoopMod
                         return a.GetInstanceID().CompareTo(b.GetInstanceID());
                     });
 
-                    for (int i = 0; i < ordered.Count; i++)
+                    for (var i = 0; i < ordered.Count; i++)
                     {
                         var cmc = ordered[i];
                         if (!cmc || !AITool.IsRealAI(cmc)) continue;
 
-                        int aiId = AITool.DeriveSeed(rootId, i + 1);
+                        var aiId = AITool.DeriveSeed(rootId, i + 1);
                         var tag = cmc.GetComponent<NetAiTag>() ?? cmc.gameObject.AddComponent<NetAiTag>();
 
                         // 主机赋 id + 登记 + 广播；客户端保持 tag.aiId=0 等待绑定（见修复 A）
@@ -137,31 +144,28 @@ namespace EscapeFromDuckovCoopMod
 
 
                     // 主机在本 root 刷完后即刻发一帧位置快照，收敛初始误差
-                    if (mod.IsServer)
-                    {
-                        COOPManager.AIHandle.Server_BroadcastAiTransforms();
-                    }
+                    if (mod.IsServer) COOPManager.AIHandle.Server_BroadcastAiTransforms();
                 }
             }
-            catch { }
+            catch
+            {
+            }
         }
     }
 
     [HarmonyPatch(typeof(CharacterSpawnerRoot), "Init")]
-    static class Patch_Root_Init_FixContain
+    internal static class Patch_Root_Init_FixContain
     {
-        static bool Prefix(CharacterSpawnerRoot __instance)
+        private static bool Prefix(CharacterSpawnerRoot __instance)
         {
             try
             {
-                var msc = Duckov.Scenes.MultiSceneCore.Instance;
+                var msc = MultiSceneCore.Instance;
 
                 // 仅在 SpawnerGuid != 0 时才做“重复过滤”
                 if (msc != null && __instance.SpawnerGuid != 0 &&
                     msc.usedCreatorIds.Contains(__instance.SpawnerGuid))
-                {
                     return true; // 放行原版 → 它会销毁重复体
-                }
 
                 var tr = Traverse.Create(__instance);
                 tr.Field("inited").SetValue(true);
@@ -169,13 +173,13 @@ namespace EscapeFromDuckovCoopMod
                 var spComp = tr.Field<CharacterSpawnerComponentBase>("spawnerComponent").Value;
                 if (spComp != null) spComp.Init(__instance);
 
-                int buildIndex = UnityEngine.SceneManagement.SceneManager.GetActiveScene().buildIndex;
+                var buildIndex = SceneManager.GetActiveScene().buildIndex;
                 tr.Field("relatedScene").SetValue(buildIndex);
 
                 __instance.transform.SetParent(null);
                 if (msc != null)
                 {
-                    Duckov.Scenes.MultiSceneCore.MoveToMainScene(__instance.gameObject);
+                    MultiSceneCore.MoveToMainScene(__instance.gameObject);
                     // 仅在 Guid 非 0 时登记，避免把“0”当成全场唯一
                     if (__instance.SpawnerGuid != 0)
                         msc.usedCreatorIds.Add(__instance.SpawnerGuid);
@@ -196,29 +200,30 @@ namespace EscapeFromDuckovCoopMod
     }
 
     [HarmonyPatch(typeof(CharacterSpawnerRoot), "Update")]
-    static class Patch_Root_Update_ClientAutoSpawn
+    internal static class Patch_Root_Update_ClientAutoSpawn
     {
-        static readonly MethodInfo _miStartSpawn =
+        private static readonly MethodInfo _miStartSpawn =
             AccessTools.Method(typeof(CharacterSpawnerRoot), "StartSpawn");
-        static readonly MethodInfo _miCheckTiming =
+
+        private static readonly MethodInfo _miCheckTiming =
             AccessTools.Method(typeof(CharacterSpawnerRoot), "CheckTiming");
 
-        static void Postfix(CharacterSpawnerRoot __instance)
+        private static void Postfix(CharacterSpawnerRoot __instance)
         {
             var mod = ModBehaviourF.Instance;
             if (mod == null || !mod.networkStarted || mod.IsServer) return;
 
             var tr = Traverse.Create(__instance);
-            bool inited = tr.Field<bool>("inited").Value;
-            bool created = tr.Field<bool>("created").Value;
+            var inited = tr.Field<bool>("inited").Value;
+            var created = tr.Field<bool>("created").Value;
             if (!inited || created) return;
 
-            int rootId = AITool.StableRootId(__instance);
+            var rootId = AITool.StableRootId(__instance);
 
             // 没种子 → 兼容一次 AltId 映射（你已有）
             if (!COOPManager.AIHandle.aiRootSeeds.ContainsKey(rootId))
             {
-                int altId = AITool.StableRootId_Alt(__instance);
+                var altId = AITool.StableRootId_Alt(__instance);
                 if (COOPManager.AIHandle.aiRootSeeds.TryGetValue(altId, out var seed))
                     COOPManager.AIHandle.aiRootSeeds[rootId] = seed;
                 else
@@ -226,16 +231,29 @@ namespace EscapeFromDuckovCoopMod
             }
 
             // 关键：尊重原版判断（时间/天气/触发器）
-            bool ok = false;
-            try { ok = (bool)_miCheckTiming.Invoke(__instance, null); } catch { }
+            var ok = false;
+            try
+            {
+                ok = (bool)_miCheckTiming.Invoke(__instance, null);
+            }
+            catch
+            {
+            }
+
             if (!ok) return;
 
             // 与原逻辑一致：确保层级激活再刷
             ForceActivateHierarchy(__instance.transform);
-            try { _miStartSpawn?.Invoke(__instance, null); } catch { }
+            try
+            {
+                _miStartSpawn?.Invoke(__instance, null);
+            }
+            catch
+            {
+            }
         }
 
-        static void ForceActivateHierarchy(Transform t)
+        private static void ForceActivateHierarchy(Transform t)
         {
             while (t)
             {
@@ -246,25 +264,24 @@ namespace EscapeFromDuckovCoopMod
     }
 
 
-
     [HarmonyPatch(typeof(CharacterSpawnerGroup), "Awake")]
-    static class Patch_Group_Awake
+    internal static class Patch_Group_Awake
     {
-        static void Postfix(CharacterSpawnerGroup __instance)
+        private static void Postfix(CharacterSpawnerGroup __instance)
         {
             try
             {
                 var mod = ModBehaviourF.Instance;
 
                 // 用“场景种子 + 该 Group 的 Transform 路径哈希”派生随机
-                int gid = AITool.StableHash(AITool.TransformPath(__instance.transform));
-                int seed = AITool.DeriveSeed(COOPManager.AIHandle.sceneSeed, gid);
+                var gid = AITool.StableHash(AITool.TransformPath(__instance.transform));
+                var seed = AITool.DeriveSeed(COOPManager.AIHandle.sceneSeed, gid);
 
                 var rng = new System.Random(seed);
                 if (__instance.hasLeader)
                 {
                     // 与原版相同的比较方式：保留队长的概率 = hasLeaderChance
-                    bool keep = rng.NextDouble() <= __instance.hasLeaderChance;
+                    var keep = rng.NextDouble() <= __instance.hasLeaderChance;
                     __instance.hasLeader = keep;
                 }
             }
@@ -274,10 +291,4 @@ namespace EscapeFromDuckovCoopMod
             }
         }
     }
-
-
-
-
-
-
 }

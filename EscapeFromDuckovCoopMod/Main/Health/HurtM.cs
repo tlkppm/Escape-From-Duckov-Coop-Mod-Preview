@@ -16,11 +16,6 @@
 
 ﻿using LiteNetLib;
 using LiteNetLib.Utils;
-using System;
-using System.Collections.Generic;
-using System.Linq;
-using System.Text;
-using System.Threading.Tasks;
 
 namespace EscapeFromDuckovCoopMod
 {
@@ -33,11 +28,13 @@ namespace EscapeFromDuckovCoopMod
         private static NetDataWriter writer => Service?.writer;
         private static NetPeer connectedPeer => Service?.connectedPeer;
         private static PlayerStatus localPlayerStatus => Service?.localPlayerStatus;
+
         private static bool networkStarted => Service != null && Service.networkStarted;
+
         // 主机：收到客户端请求，按本地规则结算，再广播受击，这是个建筑物的伤害处理
         public void Server_HandleEnvHurtRequest(NetPeer sender, NetPacketReader r)
         {
-            uint id = r.GetUInt();
+            var id = r.GetUInt();
             var payload = r.GetDamagePayload(); // (dmg, ap, cdf, cr, crit, point, normal, wid, bleed, boom, range)
 
             var hs = COOPManager.destructible.FindDestructible(id);
@@ -60,7 +57,13 @@ namespace EscapeFromDuckovCoopMod
             };
 
             // 由 HealthSimpleBase 自己在 OnHurt 里做扣血/死亡判定（Postfix 会自动广播）
-            try { hs.dmgReceiver.Hurt(info); } catch { }
+            try
+            {
+                hs.dmgReceiver.Hurt(info);
+            }
+            catch
+            {
+            }
         }
 
         // 客户端：把受击请求发到主机（只发 payload，不结算）
@@ -80,10 +83,5 @@ namespace EscapeFromDuckovCoopMod
             );
             connectedPeer.Send(w, DeliveryMethod.ReliableOrdered);
         }
-
-     
-
-
-
     }
 }

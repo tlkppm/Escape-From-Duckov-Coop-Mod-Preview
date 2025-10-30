@@ -15,17 +15,11 @@
 // GNU Affero General Public License for more details.
 
 ﻿using HarmonyLib;
-using System;
-using System.Collections.Generic;
-using System.Linq;
-using System.Text;
-using System.Threading.Tasks;
 
 namespace EscapeFromDuckovCoopMod
 {
     public class WeaponTool
     {
-
         private void TryStartVisualRecoil(ItemAgent_Gun gun)
         {
             if (!gun) return;
@@ -34,17 +28,18 @@ namespace EscapeFromDuckovCoopMod
                 Traverse.Create(gun).Method("StartVisualRecoil").GetValue();
                 return;
             }
-            catch { }
+            catch
+            {
+            }
 
             try
             {
                 // 兜底：等价于 StartVisualRecoil() 内部把 _recoilBack=true
                 Traverse.Create(gun).Field<bool>("_recoilBack").Value = true;
             }
-            catch { }
+            catch
+            {
+            }
         }
-
-
-
     }
 }

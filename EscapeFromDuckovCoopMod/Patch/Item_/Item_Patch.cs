@@ -14,22 +14,19 @@
 // MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
 // GNU Affero General Public License for more details.
 
-﻿using Cysharp.Threading.Tasks;
+﻿using System.Collections.Generic;
+using Cysharp.Threading.Tasks;
 using HarmonyLib;
 using ItemStatsSystem;
 using LiteNetLib;
-using System;
-using System.Collections.Generic;
-using System.Linq;
-using System.Text;
-using System.Threading.Tasks;
+using UnityEngine;
 
 namespace EscapeFromDuckovCoopMod
 {
     [HarmonyPatch(typeof(Item), "NotifyAddedToInventory")]
     public static class Patch_Item_Pickup_NotifyAdded
     {
-        static void Postfix(Item __instance, Inventory __0 /* inv */)
+        private static void Postfix(Item __instance, Inventory __0 /* inv */)
         {
             var mod = ModBehaviourF.Instance;
             if (mod == null || !mod.networkStarted) return;
@@ -39,38 +36,45 @@ namespace EscapeFromDuckovCoopMod
             // —— 客户端逻辑：拾到自己客户端映射的掉落，就立刻销毁地面体并发拾取请求
             if (!mod.IsServer)
             {
-                if (TryFindId(COOPManager.ItemHandle.clientDroppedItems, __instance, out uint cid))
+                if (TryFindId(COOPManager.ItemHandle.clientDroppedItems, __instance, out var cid))
                 {
                     // 本地立刻把地面拾取体干掉（如果还在）
                     try
                     {
                         var ag = __instance.ActiveAgent;
-                        if (ag && ag.gameObject) UnityEngine.Object.Destroy(ag.gameObject);
+                        if (ag && ag.gameObject) Object.Destroy(ag.gameObject);
                     }
-                    catch { }
+                    catch
+                    {
+                    }
 
                     // 发送拾取请求给主机（等主机广播 DESPAWN，让所有客户端一致删除）
-                    var w = mod.writer; w.Reset();
+                    var w = mod.writer;
+                    w.Reset();
                     w.Put((byte)Op.ITEM_PICKUP_REQUEST);
                     w.Put(cid);
                     mod.connectedPeer?.Send(w, DeliveryMethod.ReliableOrdered);
                 }
+
                 return;
             }
 
             // —— 主机逻辑：主机自己捡起主机表里的掉落，则直接移除并广播 DESPAWN
-            if (mod.IsServer && TryFindId(COOPManager.ItemHandle.serverDroppedItems, __instance, out uint sid))
+            if (mod.IsServer && TryFindId(COOPManager.ItemHandle.serverDroppedItems, __instance, out var sid))
             {
                 COOPManager.ItemHandle.serverDroppedItems.Remove(sid);
 
                 try
                 {
                     var ag = __instance.ActiveAgent;
-                    if (ag && ag.gameObject) UnityEngine.Object.Destroy(ag.gameObject);
+                    if (ag && ag.gameObject) Object.Destroy(ag.gameObject);
                 }
-                catch { }
+                catch
+                {
+                }
 
-                var w = mod.writer; w.Reset();
+                var w = mod.writer;
+                w.Reset();
                 w.Put((byte)Op.ITEM_DESPAWN);
                 w.Put(sid);
                 mod.netManager.SendToAll(w, DeliveryMethod.ReliableOrdered);
@@ -78,19 +82,24 @@ namespace EscapeFromDuckovCoopMod
         }
 
         // 小工具：ReferenceEquals 扫描映射
-        static bool TryFindId(System.Collections.Generic.Dictionary<uint, Item> dict, Item item, out uint id)
+        private static bool TryFindId(Dictionary<uint, Item> dict, Item item, out uint id)
         {
             foreach (var kv in dict)
-                if (object.ReferenceEquals(kv.Value, item))
-                { id = kv.Key; return true; }
-            id = 0; return false;
+                if (ReferenceEquals(kv.Value, item))
+                {
+                    id = kv.Key;
+                    return true;
+                }
+
+            id = 0;
+            return false;
         }
     }
 
-    [HarmonyPatch(typeof(Item), nameof(Item.Split), new[] { typeof(int) })]
-    static class Patch_Item_Split_RecordForLoot
+    [HarmonyPatch(typeof(Item), nameof(Item.Split), typeof(int))]
+    internal static class Patch_Item_Split_RecordForLoot
     {
-        static void Postfix(Item __instance, int count, ref UniTask<Item> __result)
+        private static void Postfix(Item __instance, int count, ref UniTask<Item> __result)
         {
             var m = ModBehaviourF.Instance;
             if (m == null || !m.networkStarted || m.IsServer) return;
@@ -99,29 +108,27 @@ namespace EscapeFromDuckovCoopMod
             if (srcInv == null) return;
             if (!LootboxDetectUtil.IsLootboxInventory(srcInv) || LootboxDetectUtil.IsPrivateInventory(srcInv)) return;
 
-            int srcPos = srcInv.GetIndex(__instance);
+            var srcPos = srcInv.GetIndex(__instance);
             if (srcPos < 0) return;
 
             __result = __result.ContinueWith(newItem =>
             {
                 if (newItem != null)
-                {
                     ModBehaviourF.map[newItem.GetInstanceID()] = new ModBehaviourF.Pending
                     {
                         inv = srcInv,
                         srcPos = srcPos,
                         count = count
                     };
-                }
                 return newItem;
             });
         }
     }
 
-    [HarmonyPatch(typeof(Item), nameof(Item.Split), new[] { typeof(int) })]
-    static class Patch_Item_Split_InterceptLoot_Prefix
+    [HarmonyPatch(typeof(Item), nameof(Item.Split), typeof(int))]
+    internal static class Patch_Item_Split_InterceptLoot_Prefix
     {
-        static bool Prefix(Item __instance, int count, ref UniTask<Item> __result)
+        private static bool Prefix(Item __instance, int count, ref UniTask<Item> __result)
         {
             var m = ModBehaviourF.Instance;
             if (m == null || !m.networkStarted || m.IsServer) return true;
@@ -131,12 +138,12 @@ namespace EscapeFromDuckovCoopMod
             if (!LootboxDetectUtil.IsLootboxInventory(inv) || LootboxDetectUtil.IsPrivateInventory(inv)) return true;
 
             // 源格基于当前客户端视图索引；若后续容器变化导致索引不匹配，主机会据此拒绝
-            int srcPos = inv.GetIndex(__instance);
+            var srcPos = inv.GetIndex(__instance);
             if (srcPos < 0) return true;
 
             // 选择一个优先落位（尽量不合并）：先找 srcPos 后面的空格，再全表，最后交给主机 -1
-            int prefer = inv.GetFirstEmptyPosition(srcPos + 1);
-            if (prefer < 0) prefer = inv.GetFirstEmptyPosition(0);
+            var prefer = inv.GetFirstEmptyPosition(srcPos + 1);
+            if (prefer < 0) prefer = inv.GetFirstEmptyPosition();
             if (prefer < 0) prefer = -1;
 
             // 只发请求，不做本地拆分
@@ -147,10 +154,4 @@ namespace EscapeFromDuckovCoopMod
             return false;
         }
     }
-
-
-
-
-
-
 }

@@ -14,13 +14,7 @@
 // MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
 // GNU Affero General Public License for more details.
 
-﻿using System;
-using System.Collections.Generic;
-using System.Linq;
-using System.Text;
-using System.Threading.Tasks;
-
-namespace EscapeFromDuckovCoopMod
+﻿namespace EscapeFromDuckovCoopMod
 {
     public static class PackFlag
     {
@@ -34,6 +28,7 @@ namespace EscapeFromDuckovCoopMod
             if (saveToFile) f |= 1 << 3;
             return f;
         }
+
         public static void UnpackFlags(byte f, out bool hasCurtain, out bool useLoc, out bool notifyEvac, out bool saveToFile)
         {
             hasCurtain = (f & (1 << 0)) != 0;

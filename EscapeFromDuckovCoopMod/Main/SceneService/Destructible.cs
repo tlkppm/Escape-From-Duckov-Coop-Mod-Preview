@@ -14,13 +14,11 @@
 // MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
 // GNU Affero General Public License for more details.
 
-﻿using LiteNetLib;
-using LiteNetLib.Utils;
-using System;
+﻿using System;
 using System.Collections.Generic;
-using System.Linq;
-using System.Text;
-using System.Threading.Tasks;
+using HarmonyLib;
+using LiteNetLib;
+using LiteNetLib.Utils;
 using UnityEngine;
 using Object = UnityEngine.Object;
 
@@ -28,6 +26,16 @@ namespace EscapeFromDuckovCoopMod
 {
     public class Destructible
     {
+        private readonly Dictionary<uint, HealthSimpleBase> _clientDestructibles = new Dictionary<uint, HealthSimpleBase>();
+
+
+        // 用来避免 dangerFx 重复播放
+        private readonly HashSet<uint> _dangerDestructibleIds = new HashSet<uint>();
+
+        public readonly HashSet<uint> _deadDestructibleIds = new HashSet<uint>();
+
+        // Destructible registry: id -> HealthSimpleBase
+        private readonly Dictionary<uint, HealthSimpleBase> _serverDestructibles = new Dictionary<uint, HealthSimpleBase>();
         private NetService Service => NetService.Instance;
 
         private bool IsServer => Service != null && Service.IsServer;
@@ -36,15 +44,6 @@ namespace EscapeFromDuckovCoopMod
         private NetPeer connectedPeer => Service?.connectedPeer;
         private PlayerStatus localPlayerStatus => Service?.localPlayerStatus;
         private bool networkStarted => Service != null && Service.networkStarted;
-        // Destructible registry: id -> HealthSimpleBase
-        private readonly Dictionary<uint, HealthSimpleBase> _serverDestructibles = new Dictionary<uint, HealthSimpleBase>();
-        private readonly Dictionary<uint, HealthSimpleBase> _clientDestructibles = new Dictionary<uint, HealthSimpleBase>();
-
-        public readonly HashSet<uint> _deadDestructibleIds = new HashSet<uint>();
-
-
-        // 用来避免 dangerFx 重复播放
-        private readonly HashSet<uint> _dangerDestructibleIds = new HashSet<uint>();
 
 
         public void RegisterDestructible(uint id, HealthSimpleBase hs)
@@ -69,10 +68,9 @@ namespace EscapeFromDuckovCoopMod
                 RegisterDestructible(tag.id, e);
                 if (tag.id == id) hs = e;
             }
+
             return hs;
         }
-
-
 
 
         // 客户端：用于 ENV 快照应用，静默切换到“已破坏”外观（不放爆炸特效）
@@ -85,7 +83,6 @@ namespace EscapeFromDuckovCoopMod
             // Breakable：关正常/危险外观，开破坏外观，关主碰撞体
             var br = hs.GetComponent<Breakable>();
             if (br)
-            {
                 try
                 {
                     if (br.normalVisual) br.normalVisual.SetActive(false);
@@ -93,19 +90,29 @@ namespace EscapeFromDuckovCoopMod
                     if (br.breakedVisual) br.breakedVisual.SetActive(true);
                     if (br.mainCollider) br.mainCollider.SetActive(false);
                 }
-                catch { }
-            }
+                catch
+                {
+                }
 
             // HalfObsticle：走它自带的 Dead 一下，避免残留交互
             var half = hs.GetComponent<HalfObsticle>();
-            if (half) { try { half.Dead(new DamageInfo()); } catch { } }
+            if (half)
+                try
+                {
+                    half.Dead(new DamageInfo());
+                }
+                catch
+                {
+                }
 
             // 彻底关掉所有 Collider
             try
             {
                 foreach (var c in hs.GetComponentsInChildren<Collider>(true)) c.enabled = false;
             }
-            catch { }
+            catch
+            {
+            }
 
             _deadDestructibleIds.Add(id);
         }
@@ -115,23 +122,31 @@ namespace EscapeFromDuckovCoopMod
             var p = t;
             while (p != null)
             {
-                string nm = p.name;
+                var nm = p.name;
                 if (!string.IsNullOrEmpty(nm) &&
                     nm.IndexOf("BreakableWall", StringComparison.OrdinalIgnoreCase) >= 0)
                     return p;
                 p = p.parent;
             }
+
             return null;
         }
 
         private static uint ComputeStableIdForDestructible(HealthSimpleBase hs)
         {
             if (!hs) return 0u;
-            Transform root = FindBreakableWallRoot(hs.transform);
+            var root = FindBreakableWallRoot(hs.transform);
             if (root == null) root = hs.transform;
-            try { return NetDestructibleTag.ComputeStableId(root.gameObject); }
-            catch { return 0u; }
+            try
+            {
+                return NetDestructibleTag.ComputeStableId(root.gameObject);
+            }
+            catch
+            {
+                return 0u;
+            }
         }
+
         private void ScanAndMarkInitiallyDeadDestructibles()
         {
             if (_deadDestructibleIds == null) return;
@@ -139,51 +154,57 @@ namespace EscapeFromDuckovCoopMod
 
             foreach (var kv in _serverDestructibles)
             {
-                uint id = kv.Key;
+                var id = kv.Key;
                 var hs = kv.Value;
                 if (!hs) continue;
                 if (_deadDestructibleIds.Contains(id)) continue;
 
-                bool isDead = false;
+                var isDead = false;
 
                 // 1) HP 兜底（部分 HSB 有 HealthValue）
-                try { if (hs.HealthValue <= 0f) isDead = true; } catch { }
+                try
+                {
+                    if (hs.HealthValue <= 0f) isDead = true;
+                }
+                catch
+                {
+                }
 
                 // 2) Breakable：breaked 外观/主碰撞体关闭 => 视为“已破坏”
                 if (!isDead)
-                {
                     try
                     {
                         var br = hs.GetComponent<Breakable>();
                         if (br)
                         {
-                            bool brokenView = (br.breakedVisual && br.breakedVisual.activeInHierarchy);
-                            bool mainOff = (br.mainCollider && !br.mainCollider.activeSelf);
+                            var brokenView = br.breakedVisual && br.breakedVisual.activeInHierarchy;
+                            var mainOff = br.mainCollider && !br.mainCollider.activeSelf;
                             if (brokenView || mainOff) isDead = true;
                         }
                     }
-                    catch { }
-                }
+                    catch
+                    {
+                    }
 
                 // 3) HalfObsticle：如果存在 isDead 字段，读一下（没有就忽略）
                 if (!isDead)
-                {
                     try
                     {
                         var half = hs.GetComponent("HalfObsticle"); // 避免编译期硬引用
                         if (half != null)
                         {
                             var t = half.GetType();
-                            var fi = HarmonyLib.AccessTools.Field(t, "isDead");
+                            var fi = AccessTools.Field(t, "isDead");
                             if (fi != null)
                             {
-                                object v = fi.GetValue(half);
+                                var v = fi.GetValue(half);
                                 if (v is bool && (bool)v) isDead = true;
                             }
                         }
                     }
-                    catch { }
-                }
+                    catch
+                    {
+                    }
 
                 if (isDead) _deadDestructibleIds.Add(id);
             }
@@ -202,7 +223,6 @@ namespace EscapeFromDuckovCoopMod
             // ★★ Breakable：复现 OnDead 里的可视化与爆炸（不做真正的扣血计算）
             var br = hs.GetComponent<Breakable>();
             if (br)
-            {
                 try
                 {
                     // 视觉：normal/danger -> breaked
@@ -220,16 +240,25 @@ namespace EscapeFromDuckovCoopMod
                         var di = br.explosionDamageInfo;
                         di.fromCharacter = null;
                         LevelManager.Instance.ExplosionManager.CreateExplosion(
-                            hs.transform.position, br.explosionRadius, di, ExplosionFxTypes.normal, 1f
+                            hs.transform.position, br.explosionRadius, di
                         );
                     }
                 }
-                catch { /* 忽略反编译差异引发的异常 */ }
-            }
+                catch
+                {
+                    /* 忽略反编译差异引发的异常 */
+                }
 
             // HalfObsticle：走它自带的 Dead（工程里已有）  
             var half = hs.GetComponent<HalfObsticle>();
-            if (half) { try { half.Dead(new DamageInfo { damagePoint = point, damageNormal = normal }); } catch { } }
+            if (half)
+                try
+                {
+                    half.Dead(new DamageInfo { damagePoint = point, damageNormal = normal });
+                }
+                catch
+                {
+                }
 
             // 死亡特效（HurtVisual.DeadFx），项目里已有
             var hv = hs.GetComponent<HurtVisual>();
@@ -242,9 +271,9 @@ namespace EscapeFromDuckovCoopMod
         // 原来的 ENV_DEAD_EVENT 入口里，改为调用内部函数并记死
         public void Client_ApplyDestructibleDead(NetPacketReader r)
         {
-            uint id = r.GetUInt();
-            Vector3 point = r.GetV3cm();
-            Vector3 normal = r.GetDir();
+            var id = r.GetUInt();
+            var point = r.GetV3cm();
+            var normal = r.GetDir();
             Client_ApplyDestructibleDead_Inner(id, point, normal);
         }
 
@@ -277,10 +306,10 @@ namespace EscapeFromDuckovCoopMod
         // 客户端：复现受击视觉 + Breakable 的“危险态”显隐
         public void Client_ApplyDestructibleHurt(NetPacketReader r)
         {
-            uint id = r.GetUInt();
-            float curHealth = r.GetFloat();
-            Vector3 point = r.GetV3cm();
-            Vector3 normal = r.GetDir();
+            var id = r.GetUInt();
+            var curHealth = r.GetFloat();
+            var point = r.GetV3cm();
+            var normal = r.GetDir();
 
             // 已死亡就不播受击
             if (_deadDestructibleIds.Contains(id)) return;
@@ -302,7 +331,6 @@ namespace EscapeFromDuckovCoopMod
             // Breakable 的“危险态”切换（不改血，只做可视化）
             var br = hs.GetComponent<Breakable>();
             if (br)
-            {
                 // 危险阈值：源码里是 simpleHealth.HealthValue <= dangerHealth 时切到 danger。:contentReference[oaicite:7]{index=7}
                 try
                 {
@@ -316,8 +344,10 @@ namespace EscapeFromDuckovCoopMod
                         _dangerDestructibleIds.Add(id);
                     }
                 }
-                catch { /* 防御式：反编译字段为 null 时静默 */ }
-            }
+                catch
+                {
+                    /* 防御式：反编译字段为 null 时静默 */
+                }
         }
 
         public void BuildDestructibleIndex()
@@ -330,8 +360,8 @@ namespace EscapeFromDuckovCoopMod
             if (_clientDestructibles != null) _clientDestructibles.Clear();
 
             // 遍历所有 HSB（包含未激活物体，避免漏 index）
-            var all = UnityEngine.Object.FindObjectsOfType<HealthSimpleBase>(true);
-            for (int i = 0; i < all.Length; i++)
+            var all = Object.FindObjectsOfType<HealthSimpleBase>(true);
+            for (var i = 0; i < all.Length; i++)
             {
                 var hs = all[i];
                 if (!hs) continue;
@@ -340,12 +370,17 @@ namespace EscapeFromDuckovCoopMod
                 if (!tag) continue; // 我们只索引带有 NetDestructibleTag 的目标（墙/油桶等）
 
                 // —— 统一计算稳定ID —— //
-                uint id = ComputeStableIdForDestructible(hs);
+                var id = ComputeStableIdForDestructible(hs);
                 if (id == 0u)
-                {
                     // 兜底：偶发异常时用自身 gameObject 算一次
-                    try { id = NetDestructibleTag.ComputeStableId(hs.gameObject); } catch { }
-                }
+                    try
+                    {
+                        id = NetDestructibleTag.ComputeStableId(hs.gameObject);
+                    }
+                    catch
+                    {
+                    }
+
                 tag.id = id;
 
                 // —— 注册到现有索引（与你项目里的一致） —— //
@@ -354,13 +389,7 @@ namespace EscapeFromDuckovCoopMod
 
             // —— 仅主机：扫描一遍“初始即已破坏”的目标，写进 _deadDestructibleIds —— //
             if (IsServer) // ⇦ 这里用你项目中判断“是否为主机”的字段/属性；若无则换成你原有判断
-            {
                 ScanAndMarkInitiallyDeadDestructibles();
-            }
         }
-
-
-
-
     }
 }

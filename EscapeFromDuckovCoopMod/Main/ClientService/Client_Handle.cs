@@ -14,17 +14,11 @@
 // MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
 // GNU Affero General Public License for more details.
 
-﻿using Cysharp.Threading.Tasks;
+﻿using System.Collections.Generic;
+using Cysharp.Threading.Tasks;
 using LiteNetLib;
 using LiteNetLib.Utils;
-using System;
-using System.Collections.Generic;
-using System.Linq;
-using System.Text;
-using System.Threading.Tasks;
 using UnityEngine;
-using static EscapeFromDuckovCoopMod.ModBehaviourF;
-using Object = UnityEngine.Object;
 
 namespace EscapeFromDuckovCoopMod
 {
@@ -41,24 +35,25 @@ namespace EscapeFromDuckovCoopMod
         private Dictionary<NetPeer, GameObject> remoteCharacters => Service?.remoteCharacters;
         private Dictionary<NetPeer, PlayerStatus> playerStatuses => Service?.playerStatuses;
         private Dictionary<string, GameObject> clientRemoteCharacters => Service?.clientRemoteCharacters;
+
         public void HandleClientStatusUpdate(NetPeer peer, NetPacketReader reader)
         {
-            string endPoint = reader.GetString();
-            string playerName = reader.GetString();
-            bool isInGame = reader.GetBool();
-            Vector3 position = reader.GetVector3();
-            Quaternion rotation = reader.GetQuaternion();
-            string sceneId = reader.GetString();
-            string customFaceJson = reader.GetString();
+            var endPoint = reader.GetString();
+            var playerName = reader.GetString();
+            var isInGame = reader.GetBool();
+            var position = reader.GetVector3();
+            var rotation = reader.GetQuaternion();
+            var sceneId = reader.GetString();
+            var customFaceJson = reader.GetString();
 
-            int equipmentCount = reader.GetInt();
+            var equipmentCount = reader.GetInt();
             var equipmentList = new List<EquipmentSyncData>();
-            for (int i = 0; i < equipmentCount; i++)
+            for (var i = 0; i < equipmentCount; i++)
                 equipmentList.Add(EquipmentSyncData.Deserialize(reader));
 
-            int weaponCount = reader.GetInt();
+            var weaponCount = reader.GetInt();
             var weaponList = new List<WeaponSyncData>();
-            for (int i = 0; i < weaponCount; i++)
+            for (var i = 0; i < weaponCount; i++)
                 weaponList.Add(WeaponSyncData.Deserialize(reader));
 
             if (!playerStatuses.ContainsKey(peer))
@@ -80,7 +75,7 @@ namespace EscapeFromDuckovCoopMod
 
             if (isInGame && !remoteCharacters.ContainsKey(peer))
             {
-               CreateRemoteCharacter.CreateRemoteCharacterAsync(peer, position, rotation, customFaceJson).Forget();
+                CreateRemoteCharacter.CreateRemoteCharacterAsync(peer, position, rotation, customFaceJson).Forget();
                 foreach (var e in equipmentList) COOPManager.HostPlayer_Apply.ApplyEquipmentUpdate(peer, e.SlotHash, e.ItemId).Forget();
                 foreach (var w in weaponList) COOPManager.HostPlayer_Apply.ApplyWeaponUpdate(peer, w.SlotHash, w.ItemId).Forget();
             }
@@ -91,6 +86,7 @@ namespace EscapeFromDuckovCoopMod
                     go.transform.position = position;
                     go.GetComponentInChildren<CharacterMainControl>().modelRoot.transform.rotation = rotation;
                 }
+
                 foreach (var e in equipmentList) COOPManager.HostPlayer_Apply.ApplyEquipmentUpdate(peer, e.SlotHash, e.ItemId).Forget();
                 foreach (var w in weaponList) COOPManager.HostPlayer_Apply.ApplyWeaponUpdate(peer, w.SlotHash, w.ItemId).Forget();
             }
@@ -98,17 +94,6 @@ namespace EscapeFromDuckovCoopMod
             playerStatuses[peer] = st;
 
             Send_LoaclPlayerStatus.Instance.SendPlayerStatusUpdate();
-
         }
-
-
-
-
-
-
-
-
-
-
     }
 }

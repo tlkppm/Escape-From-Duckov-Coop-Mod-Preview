@@ -14,37 +14,36 @@
 // MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
 // GNU Affero General Public License for more details.
 
-﻿using HarmonyLib;
+﻿using System.Reflection;
+using Duckov.UI;
+using HarmonyLib;
 using ItemStatsSystem;
-using System;
-using System.Collections.Generic;
-using System.Linq;
-using System.Reflection;
-using System.Text;
-using System.Threading.Tasks;
 using UnityEngine;
 
 namespace EscapeFromDuckovCoopMod
 {
     [HarmonyPatch]
-    static class Patch_ItemUtilities_SendToPlayerCharacterInventory_FromLoot
+    internal static class Patch_ItemUtilities_SendToPlayerCharacterInventory_FromLoot
     {
-        static MethodBase TargetMethod()
+        private static MethodBase TargetMethod()
         {
             var t = typeof(ItemUtilities);
             var m2 = AccessTools.Method(t, "SendToPlayerCharacterInventory",
-                new[] { typeof(ItemStatsSystem.Item), typeof(bool) });
+                new[] { typeof(Item), typeof(bool) });
             if (m2 != null) return m2;
 
             // 兼容可能存在的 5 参重载
             return AccessTools.Method(t, "SendToPlayerCharacterInventory",
-                new[] { typeof(ItemStatsSystem.Item), typeof(bool), typeof(bool),
-                    typeof(ItemStatsSystem.Inventory), typeof(int) });
+                new[]
+                {
+                    typeof(Item), typeof(bool), typeof(bool),
+                    typeof(Inventory), typeof(int)
+                });
         }
 
         // 只写 (Item item, bool dontMerge, ref bool __result)，别再写不存在的参数
 
-        static bool Prefix(ItemStatsSystem.Item item, bool dontMerge, ref bool __result)
+        private static bool Prefix(Item item, bool dontMerge, ref bool __result)
         {
             var m = ModBehaviourF.Instance;
             if (m == null || !m.networkStarted || m.IsServer) return true;
@@ -60,7 +59,7 @@ namespace EscapeFromDuckovCoopMod
             var inv = item ? item.InInventory : null;
             if (inv && LootboxDetectUtil.IsLootboxInventory(inv) && !LootboxDetectUtil.IsPrivateInventory(inv))
             {
-                int srcPos = inv.GetIndex(item);
+                var srcPos = inv.GetIndex(item);
                 if (srcPos >= 0)
                 {
                     COOPManager.LootNet.Client_SendLootTakeRequest(inv, srcPos); // 目的地不指定，TAKE_OK 再落背包
@@ -78,9 +77,14 @@ namespace EscapeFromDuckovCoopMod
 
                 var srcLoot = master ? master.InInventory : null;
                 if (!srcLoot)
-                {
-                    try { var lv = Duckov.UI.LootView.Instance; if (lv) srcLoot = lv.TargetInventory; } catch { }
-                }
+                    try
+                    {
+                        var lv = LootView.Instance;
+                        if (lv) srcLoot = lv.TargetInventory;
+                    }
+                    catch
+                    {
+                    }
 
                 if (srcLoot && LootboxDetectUtil.IsLootboxInventory(srcLoot) && !LootboxDetectUtil.IsPrivateInventory(srcLoot))
                 {
@@ -95,14 +99,12 @@ namespace EscapeFromDuckovCoopMod
             // 其它情况走原生
             return true;
         }
-
-
     }
 
     [HarmonyPatch(typeof(ItemUtilities), "AddAndMerge")]
-    static class Patch_ItemUtilities_AddAndMerge_LootPut
+    internal static class Patch_ItemUtilities_AddAndMerge_LootPut
     {
-        static bool Prefix(ItemStatsSystem.Inventory inventory, ItemStatsSystem.Item item, int preferedFirstPosition, ref bool __result)
+        private static bool Prefix(Inventory inventory, Item item, int preferedFirstPosition, ref bool __result)
         {
             var m = ModBehaviourF.Instance;
             if (m == null || !m.networkStarted) return true;
@@ -110,11 +112,22 @@ namespace EscapeFromDuckovCoopMod
             //  同样仅限“战利品容器初始化”时屏蔽
             if (!m.IsServer && m.ClientLootSetupActive)
             {
-                bool isLootInv = LootboxDetectUtil.IsLootboxInventory(inventory)
-                                 && !LootboxDetectUtil.IsPrivateInventory(inventory);
+                var isLootInv = LootboxDetectUtil.IsLootboxInventory(inventory)
+                                && !LootboxDetectUtil.IsPrivateInventory(inventory);
                 if (isLootInv)
                 {
-                    try { if (item) { item.Detach(); UnityEngine.Object.Destroy(item.gameObject); } } catch { }
+                    try
+                    {
+                        if (item)
+                        {
+                            item.Detach();
+                            Object.Destroy(item.gameObject);
+                        }
+                    }
+                    catch
+                    {
+                    }
+
                     __result = true;
                     return false;
                 }
@@ -122,8 +135,8 @@ namespace EscapeFromDuckovCoopMod
 
             if (!m.IsServer && !COOPManager.LootNet._applyingLootState)
             {
-                bool isLootInv = LootboxDetectUtil.IsLootboxInventory(inventory)
-                                 && !LootboxDetectUtil.IsPrivateInventory(inventory);
+                var isLootInv = LootboxDetectUtil.IsLootboxInventory(inventory)
+                                && !LootboxDetectUtil.IsPrivateInventory(inventory);
                 if (isLootInv)
                 {
                     COOPManager.LootNet.Client_SendLootPutRequest(inventory, item, preferedFirstPosition);
@@ -135,13 +148,13 @@ namespace EscapeFromDuckovCoopMod
             return true;
         }
 
-        static void Postfix(ItemStatsSystem.Inventory inventory, ItemStatsSystem.Item item, int preferedFirstPosition, bool __result)
+        private static void Postfix(Inventory inventory, Item item, int preferedFirstPosition, bool __result)
         {
             var m = ModBehaviourF.Instance;
             if (m == null || !m.networkStarted || !m.IsServer) return;
             if (!__result || COOPManager.LootNet._serverApplyingLoot) return;
 
-            bool isLootInv = LootboxDetectUtil.IsLootboxInventory(inventory) && !LootboxDetectUtil.IsPrivateInventory(inventory);
+            var isLootInv = LootboxDetectUtil.IsLootboxInventory(inventory) && !LootboxDetectUtil.IsPrivateInventory(inventory);
             if (isLootInv)
                 COOPManager.LootNet.Server_SendLootboxState(null, inventory);
         }
@@ -150,9 +163,9 @@ namespace EscapeFromDuckovCoopMod
     // 2) 优先拦截 AddAndMerge：若是“容器内拆分的新堆”，改发 SPLIT
     [HarmonyPatch(typeof(ItemUtilities), "AddAndMerge")]
     [HarmonyPriority(Priority.First)] // 一定要先于你现有的 AddAndMerge 拦截执行
-    static class Patch_AddAndMerge_SplitFirst
+    internal static class Patch_AddAndMerge_SplitFirst
     {
-        static bool Prefix(Inventory inventory, Item item, int preferedFirstPosition, ref bool __result)
+        private static bool Prefix(Inventory inventory, Item item, int preferedFirstPosition, ref bool __result)
         {
             var m = ModBehaviourF.Instance;
             if (m == null || !m.networkStarted || m.IsServer) return true; // 主机 / 未联网：放行
@@ -169,22 +182,32 @@ namespace EscapeFromDuckovCoopMod
             COOPManager.LootNet.Client_SendLootSplitRequest(inventory, p.srcPos, p.count, preferedFirstPosition);
 
             // 清理本地临时 newItem，避免和主机广播的正式实体重复
-            try { if (item) { item.Detach(); UnityEngine.Object.Destroy(item.gameObject); } } catch { }
+            try
+            {
+                if (item)
+                {
+                    item.Detach();
+                    Object.Destroy(item.gameObject);
+                }
+            }
+            catch
+            {
+            }
+
             ModBehaviourF.map.Remove(item.GetInstanceID());
 
-            __result = true;   // 告诉上层“处理完成”
-            return false;      // 不要执行原方法（否则又会 PUT 一遍）
+            __result = true; // 告诉上层“处理完成”
+            return false; // 不要执行原方法（否则又会 PUT 一遍）
         }
     }
 
 
-
     // 修正：拦截 AddAndMerge 时的参数名必须与原方法一致
     [HarmonyPatch(typeof(ItemUtilities), nameof(ItemUtilities.AddAndMerge))]
-    static class Patch_ItemUtilities_AddAndMerge_InterceptSlotToBackpack
+    internal static class Patch_ItemUtilities_AddAndMerge_InterceptSlotToBackpack
     {
         // 原方法签名：static bool AddAndMerge(Inventory inventory, Item item, int preferedFirstPosition)
-        static bool Prefix(ItemStatsSystem.Inventory inventory, ItemStatsSystem.Item item, int preferedFirstPosition, ref bool __result)
+        private static bool Prefix(Inventory inventory, Item item, int preferedFirstPosition, ref bool __result)
         {
             var m = ModBehaviourF.Instance;
             if (m == null || !m.networkStarted || m.IsServer) return true;
@@ -203,9 +226,14 @@ namespace EscapeFromDuckovCoopMod
 
             var srcLoot = master ? master.InInventory : null;
             if (!srcLoot)
-            {
-                try { var lv = Duckov.UI.LootView.Instance; if (lv) srcLoot = lv.TargetInventory; } catch { }
-            }
+                try
+                {
+                    var lv = LootView.Instance;
+                    if (lv) srcLoot = lv.TargetInventory;
+                }
+                catch
+                {
+                }
 
             if (srcLoot && LootboxDetectUtil.IsLootboxInventory(srcLoot) && !LootboxDetectUtil.IsPrivateInventory(srcLoot))
             {
@@ -220,17 +248,5 @@ namespace EscapeFromDuckovCoopMod
             __result = false;
             return false;
         }
-
     }
-
-
-
-
-
-
-
-
-
-
-
 }

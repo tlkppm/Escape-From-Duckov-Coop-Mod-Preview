@@ -14,15 +14,8 @@
 // MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
 // GNU Affero General Public License for more details.
 
-﻿using Duckov.UI;
-using LiteNetLib;
-using LiteNetLib.Utils;
-using System;
-using System.Collections;
-using System.Collections.Generic;
-using System.Linq;
-using System.Text;
-using System.Threading.Tasks;
+﻿using System.Collections;
+using System.Reflection;
 using UnityEngine;
 
 namespace EscapeFromDuckovCoopMod
@@ -30,20 +23,21 @@ namespace EscapeFromDuckovCoopMod
     [DisallowMultipleComponent]
     public class AutoRequestHealthBar : MonoBehaviour
     {
-        [SerializeField] int attempts = 30;      // 最长重试次数（总计约 3 秒）
-        [SerializeField] float interval = 0.1f;  // 每次重试间隔
+        private static readonly FieldInfo FI_character =
+            typeof(Health).GetField("characterCached", BindingFlags.NonPublic | BindingFlags.Instance);
 
-        static readonly System.Reflection.FieldInfo FI_character =
-            typeof(Health).GetField("characterCached", System.Reflection.BindingFlags.NonPublic | System.Reflection.BindingFlags.Instance);
-        static readonly System.Reflection.FieldInfo FI_hasChar =
-            typeof(Health).GetField("hasCharacter", System.Reflection.BindingFlags.NonPublic | System.Reflection.BindingFlags.Instance);
+        private static readonly FieldInfo FI_hasChar =
+            typeof(Health).GetField("hasCharacter", BindingFlags.NonPublic | BindingFlags.Instance);
 
-        void OnEnable()
+        [SerializeField] private int attempts = 30; // 最长重试次数（总计约 3 秒）
+        [SerializeField] private float interval = 0.1f; // 每次重试间隔
+
+        private void OnEnable()
         {
             StartCoroutine(Bootstrap());
         }
 
-        IEnumerator Bootstrap()
+        private IEnumerator Bootstrap()
         {
             // 等一帧，确保层级/场景/UI 管线基本就绪??
             yield return null;
@@ -54,17 +48,50 @@ namespace EscapeFromDuckovCoopMod
             if (!h) yield break;
 
             // 绑定 Health⇄Character（远端克隆常见问题）
-            try { FI_character?.SetValue(h, cmc); FI_hasChar?.SetValue(h, true); } catch { }
+            try
+            {
+                FI_character?.SetValue(h, cmc);
+                FI_hasChar?.SetValue(h, true);
+            }
+            catch
+            {
+            }
 
-            for (int i = 0; i < attempts; i++)
+            for (var i = 0; i < attempts; i++)
             {
                 if (!h) yield break;
 
-                try { h.showHealthBar = true; } catch { }
-                try { h.RequestHealthBar(); } catch { }
+                try
+                {
+                    h.showHealthBar = true;
+                }
+                catch
+                {
+                }
 
-                try { h.OnMaxHealthChange?.Invoke(h); } catch { }
-                try { h.OnHealthChange?.Invoke(h); } catch { }
+                try
+                {
+                    h.RequestHealthBar();
+                }
+                catch
+                {
+                }
+
+                try
+                {
+                    h.OnMaxHealthChange?.Invoke(h);
+                }
+                catch
+                {
+                }
+
+                try
+                {
+                    h.OnHealthChange?.Invoke(h);
+                }
+                catch
+                {
+                }
 
                 yield return new WaitForSeconds(interval);
             }

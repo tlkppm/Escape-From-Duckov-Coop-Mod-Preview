@@ -16,11 +16,6 @@
 
 ﻿using Duckov.UI;
 using HarmonyLib;
-using System;
-using System.Collections.Generic;
-using System.Linq;
-using System.Text;
-using System.Threading.Tasks;
 using UnityEngine;
 
 namespace EscapeFromDuckovCoopMod
@@ -28,41 +23,66 @@ namespace EscapeFromDuckovCoopMod
     // Host-only 强制血条组件
     public sealed class HostForceHealthBar : MonoBehaviour
     {
-        private Health _h;
         private float _deadline;
+        private Health _h;
         private int _tries;
+
+        private void Update()
+        {
+            if (!_h || Time.time > _deadline)
+            {
+                enabled = false;
+                return;
+            }
+
+            // 每帧抢条子
+            try
+            {
+                _h.showHealthBar = true;
+            }
+            catch
+            {
+            }
+
+            try
+            {
+                _h.RequestHealthBar();
+            }
+            catch
+            {
+            }
+
+            // 一旦拿到 HealthBar 就停
+            try
+            {
+                var miGet = AccessTools.DeclaredMethod(typeof(HealthBarManager), "GetActiveHealthBar", new[] { typeof(Health) });
+                var hb = miGet?.Invoke(HealthBarManager.Instance, new object[] { _h }) as HealthBar;
+                if (hb != null)
+                {
+                    enabled = false;
+                    return;
+                }
+            }
+            catch
+            {
+            }
+
+            _tries++;
+        }
 
         private void OnEnable()
         {
             // 仅主机才需要；客户端已有 AutoRequestHealthBar
             var m = ModBehaviourF.Instance;
-            if (m == null || !m.networkStarted || !m.IsServer) { enabled = false; return; }
-           
-            _h = GetComponentInChildren<Health>(true);
-            _deadline = Time.time + 5f;   // 最多尝试 5 秒
-            _tries = 0;
-           
-        }
-
-        private void Update()
-        {
-            if (!_h || Time.time > _deadline) { enabled = false; return; }
-
-            // 每帧抢条子
-            try { _h.showHealthBar = true; } catch { }
-            try { _h.RequestHealthBar(); } catch { }
-
-            // 一旦拿到 HealthBar 就停
-            try
+            if (m == null || !m.networkStarted || !m.IsServer)
             {
-                var miGet = AccessTools.DeclaredMethod(typeof(HealthBarManager), "GetActiveHealthBar", new[] { typeof(global::Health) });
-                var hb = miGet?.Invoke(HealthBarManager.Instance, new object[] { _h }) as Duckov.UI.HealthBar;
-                if (hb != null) { enabled = false; return; }
+                enabled = false;
+                return;
             }
-            catch { }
 
-            _tries++;
+            _h = GetComponentInChildren<Health>(true);
+            _deadline = Time.time + 5f; // 最多尝试 5 秒
+            _tries = 0;
         }
     }
-
 }

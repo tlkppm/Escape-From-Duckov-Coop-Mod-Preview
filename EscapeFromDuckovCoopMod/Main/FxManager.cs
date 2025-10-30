@@ -14,25 +14,31 @@
 // MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
 // GNU Affero General Public License for more details.
 
-﻿using Duckov;
+﻿using System;
+using System.Collections.Generic;
+using System.Reflection;
+using Cysharp.Threading.Tasks;
+using Duckov;
+using FMOD;
+using FMOD.Studio;
+using FMODUnity;
+using HarmonyLib;
 using LiteNetLib;
 using LiteNetLib.Utils;
-using System;
-using System.Collections.Generic;
-using System.Linq;
-using System.Reflection;
-using System.Text;
-using System.Threading.Tasks;
 using UnityEngine;
+using Object = UnityEngine.Object;
 
 namespace EscapeFromDuckovCoopMod
 {
-    public class MeleeFxStamp : MonoBehaviour { public float lastFxTime; }
+    public class MeleeFxStamp : MonoBehaviour
+    {
+        public float lastFxTime;
+    }
 
     public static class MeleeFx
     {
         private static NetService Service => NetService.Instance;
-       
+
         public static void SpawnSlashFx(CharacterModel ctrl)
         {
             if (!ctrl) return;
@@ -43,11 +49,11 @@ namespace EscapeFromDuckovCoopMod
             // 优先：从模型常见挂点里找
             Transform[] sockets =
             {
-        ctrl.MeleeWeaponSocket,
-        // 某些模型可能把近战也挂在左右手
-        // 这些字段若不存在/为 null，不会报错
-        ctrl.GetType().GetField("RightHandSocket") != null ? (Transform)ctrl.GetType().GetField("RightHandSocket").GetValue(ctrl) : null,
-        ctrl.GetType().GetField("LefthandSocket")  != null ? (Transform)ctrl.GetType().GetField("LefthandSocket").GetValue(ctrl)  : null,
+                ctrl.MeleeWeaponSocket,
+                // 某些模型可能把近战也挂在左右手
+                // 这些字段若不存在/为 null，不会报错
+                ctrl.GetType().GetField("RightHandSocket") != null ? (Transform)ctrl.GetType().GetField("RightHandSocket").GetValue(ctrl) : null,
+                ctrl.GetType().GetField("LefthandSocket") != null ? (Transform)ctrl.GetType().GetField("LefthandSocket").GetValue(ctrl) : null
             };
 
             foreach (var s in sockets)
@@ -69,28 +75,46 @@ namespace EscapeFromDuckovCoopMod
             stamp.lastFxTime = Time.time;
 
             // —— 3) 按武器定义的延迟 + 合理的前方位置/朝向 —— 
-            float delay = Mathf.Max(0f, melee.slashFxDelayTime);
+            var delay = Mathf.Max(0f, melee.slashFxDelayTime);
 
             var t = ctrl.transform;
-            float forward = Mathf.Clamp(melee.AttackRange * 0.6f, 0.2f, 2.5f);
-            Vector3 pos = t.position + t.forward * forward + Vector3.up * 0.6f;
-            Quaternion rot = Quaternion.LookRotation(t.forward, Vector3.up);
+            var forward = Mathf.Clamp(melee.AttackRange * 0.6f, 0.2f, 2.5f);
+            var pos = t.position + t.forward * forward + Vector3.up * 0.6f;
+            var rot = Quaternion.LookRotation(t.forward, Vector3.up);
 
-            Cysharp.Threading.Tasks.UniTask.Void(async () =>
+            UniTask.Void(async () =>
             {
                 try
                 {
-                    await Cysharp.Threading.Tasks.UniTask.Delay(TimeSpan.FromSeconds(delay));
-                    UnityEngine.Object.Instantiate(melee.slashFx, pos, rot);
+                    await UniTask.Delay(TimeSpan.FromSeconds(delay));
+                    Object.Instantiate(melee.slashFx, pos, rot);
                 }
-                catch { }
+                catch
+                {
+                }
             });
         }
-
     }
 
     public static class FxManager
     {
+        private static readonly Dictionary<ItemAgent_Gun, GameObject> _muzzleFxByGun = new Dictionary<ItemAgent_Gun, GameObject>();
+        private static readonly Dictionary<ItemAgent_Gun, ParticleSystem> _shellPsByGun = new Dictionary<ItemAgent_Gun, ParticleSystem>();
+
+        // 给我一个默认的开火FX，用于弓没有配置 muzzleFxPfb 时兜底（在 Inspector 里拖一个合适的特效）Lol
+        public static GameObject defaultMuzzleFx;
+
+
+        // 反射缓存（避免每枪 Traverse）
+        private static readonly MethodInfo MI_StartVisualRecoil =
+            AccessTools.Method(typeof(ItemAgent_Gun), "StartVisualRecoil");
+
+        private static readonly FieldInfo FI_RecoilBack =
+            AccessTools.Field(typeof(ItemAgent_Gun), "_recoilBack");
+
+        private static readonly FieldInfo FI_ShellParticle =
+            AccessTools.Field(typeof(ItemAgent_Gun), "shellParticle");
+
         private static NetService Service => NetService.Instance;
         private static bool IsServer => Service != null && Service.IsServer;
         private static NetManager netManager => Service?.netManager;
@@ -101,11 +125,6 @@ namespace EscapeFromDuckovCoopMod
         private static Dictionary<NetPeer, GameObject> remoteCharacters => Service?.remoteCharacters;
         private static Dictionary<NetPeer, PlayerStatus> playerStatuses => Service?.playerStatuses;
         private static Dictionary<string, GameObject> clientRemoteCharacters => Service?.clientRemoteCharacters;
-        static readonly Dictionary<ItemAgent_Gun, GameObject> _muzzleFxByGun = new Dictionary<ItemAgent_Gun, GameObject>();
-        static readonly Dictionary<ItemAgent_Gun, ParticleSystem> _shellPsByGun = new Dictionary<ItemAgent_Gun, ParticleSystem>();
-
-        // 给我一个默认的开火FX，用于弓没有配置 muzzleFxPfb 时兜底（在 Inspector 里拖一个合适的特效）Lol
-        public static GameObject defaultMuzzleFx;
 
 
         public static void PlayMuzzleFxAndShell(string shooterId, int weaponType, Vector3 muzzlePos, Vector3 finalDir)
@@ -122,10 +141,8 @@ namespace EscapeFromDuckovCoopMod
                 else if (!string.IsNullOrEmpty(shooterId) && shooterId.StartsWith("AI:"))
                 {
                     if (int.TryParse(shooterId.Substring(3), out var aiId))
-                    {
                         if (AITool.aiById.TryGetValue(aiId, out var cmc) && cmc)
                             shooterGo = cmc.gameObject;
-                    }
                 }
                 else
                 {
@@ -134,9 +151,12 @@ namespace EscapeFromDuckovCoopMod
                         // Server：EndPoint -> NetPeer -> remoteCharacters
                         NetPeer foundPeer = null;
                         foreach (var kv in playerStatuses)
-                        {
-                            if (kv.Value != null && kv.Value.EndPoint == shooterId) { foundPeer = kv.Key; break; }
-                        }
+                            if (kv.Value != null && kv.Value.EndPoint == shooterId)
+                            {
+                                foundPeer = kv.Key;
+                                break;
+                            }
+
                         if (foundPeer != null) remoteCharacters.TryGetValue(foundPeer, out shooterGo);
                     }
                     else
@@ -150,13 +170,11 @@ namespace EscapeFromDuckovCoopMod
                 ItemAgent_Gun gun = null;
                 Transform muzzleTf = null;
                 if (!string.IsNullOrEmpty(shooterId))
-                {
                     if (LoaclPlayerManager.Instance._gunCacheByShooter.TryGetValue(shooterId, out var cached) && cached.gun)
                     {
                         gun = cached.gun;
                         muzzleTf = cached.muzzle;
                     }
-                }
 
                 // 3) 缓存未命中 → 扫描一次并写入缓存
                 if (shooterGo && (!gun || !muzzleTf))
@@ -170,14 +188,12 @@ namespace EscapeFromDuckovCoopMod
                         if (model.LefthandSocket && !gun) gun = model.LefthandSocket.GetComponentInChildren<ItemAgent_Gun>(true);
                         if (model.MeleeWeaponSocket && !gun) gun = model.MeleeWeaponSocket.GetComponentInChildren<ItemAgent_Gun>(true);
                     }
-                    if (!gun) gun = cmc ? (cmc.CurrentHoldItemAgent as ItemAgent_Gun) : null;
+
+                    if (!gun) gun = cmc ? cmc.CurrentHoldItemAgent as ItemAgent_Gun : null;
 
                     if (gun && gun.muzzle && !muzzleTf) muzzleTf = gun.muzzle;
 
-                    if (!string.IsNullOrEmpty(shooterId) && gun)
-                    {
-                        LoaclPlayerManager.Instance._gunCacheByShooter[shooterId] = (gun, muzzleTf);
-                    }
+                    if (!string.IsNullOrEmpty(shooterId) && gun) LoaclPlayerManager.Instance._gunCacheByShooter[shooterId] = (gun, muzzleTf);
                 }
 
                 // 4) 没有 muzzle 就用兜底挂点（只负责火光，不做抛壳/回座力）
@@ -221,22 +237,27 @@ namespace EscapeFromDuckovCoopMod
                     BindingFlags.Instance | BindingFlags.NonPublic | BindingFlags.Public);
                 if (fi != null) hv = fi.GetValue(model);
             }
-            catch { }
-
-            if (hv == null)
+            catch
             {
-                try { hv = model.GetComponentInChildren(typeof(global::HurtVisual), true); } catch { }
             }
 
+            if (hv == null)
+                try
+                {
+                    hv = model.GetComponentInChildren(typeof(HurtVisual), true);
+                }
+                catch
+                {
+                }
+
             if (hv != null)
-            {
                 try
                 {
                     var miDead = hv.GetType().GetMethod("OnDead",
                         BindingFlags.Instance | BindingFlags.NonPublic | BindingFlags.Public);
                     if (miDead != null)
                     {
-                        var di = new global::DamageInfo
+                        var di = new DamageInfo
                         {
                             // OnDead 本身只需要一个 DamageInfo；就传个位置即可
                             damagePoint = cmc.transform.position,
@@ -244,14 +265,12 @@ namespace EscapeFromDuckovCoopMod
                         };
                         miDead.Invoke(hv, new object[] { di });
 
-                        if (FmodEventExists("event:/e_KillMarker"))
-                        {
-                            AudioManager.Post("e_KillMarker");
-                        }
+                        if (FmodEventExists("event:/e_KillMarker")) AudioManager.Post("e_KillMarker");
                     }
                 }
-                catch { }
-            }
+                catch
+                {
+                }
         }
 
         public static void Client_PlayLocalShotFx(ItemAgent_Gun gun, Transform muzzleTf, int weaponType)
@@ -297,14 +316,30 @@ namespace EscapeFromDuckovCoopMod
                         _muzzleFxByGun[gun] = fxGo;
                     }
                 }
+
                 PlayFxGameObject(fxGo);
 
                 if (!_shellPsByGun.TryGetValue(gun, out var shellPs) || shellPs == null)
                 {
-                    try { shellPs = (ParticleSystem)FI_ShellParticle?.GetValue(gun); } catch { shellPs = null; }
+                    try
+                    {
+                        shellPs = (ParticleSystem)FI_ShellParticle?.GetValue(gun);
+                    }
+                    catch
+                    {
+                        shellPs = null;
+                    }
+
                     _shellPsByGun[gun] = shellPs;
                 }
-                try { if (shellPs) shellPs.Emit(1); } catch { }
+
+                try
+                {
+                    if (shellPs) shellPs.Emit(1);
+                }
+                catch
+                {
+                }
 
                 TryStartVisualRecoil_NoAlloc(gun);
                 return;
@@ -319,10 +354,17 @@ namespace EscapeFromDuckovCoopMod
                 tempFx.transform.localRotation = Quaternion.identity;
 
                 var ps = tempFx.GetComponent<ParticleSystem>();
-                if (ps) ps.Play(true);
-                else { tempFx.SetActive(false); tempFx.SetActive(true); }
+                if (ps)
+                {
+                    ps.Play(true);
+                }
+                else
+                {
+                    tempFx.SetActive(false);
+                    tempFx.SetActive(true);
+                }
 
-               GameObject.Destroy(tempFx, 0.5f);
+                GameObject.Destroy(tempFx, 0.5f);
             }
         }
 
@@ -334,37 +376,33 @@ namespace EscapeFromDuckovCoopMod
                 MI_StartVisualRecoil?.Invoke(gun, null);
                 return;
             }
-            catch { }
+            catch
+            {
+            }
 
-            try { FI_RecoilBack?.SetValue(gun, true); } catch { }
+            try
+            {
+                FI_RecoilBack?.SetValue(gun, true);
+            }
+            catch
+            {
+            }
         }
 
-        static bool FmodEventExists(string path)
+        private static bool FmodEventExists(string path)
         {
             try
             {
-                var sys = FMODUnity.RuntimeManager.StudioSystem;
+                var sys = RuntimeManager.StudioSystem;
                 if (!sys.isValid()) return false;
-                FMOD.Studio.EventDescription desc;
+                EventDescription desc;
                 var r = sys.getEvent(path, out desc);
-                return r == FMOD.RESULT.OK && desc.isValid();
+                return r == RESULT.OK && desc.isValid();
             }
-            catch { return false; }
+            catch
+            {
+                return false;
+            }
         }
-
-
-
-
-
-        // 反射缓存（避免每枪 Traverse）
-        static readonly System.Reflection.MethodInfo MI_StartVisualRecoil =
-            HarmonyLib.AccessTools.Method(typeof(ItemAgent_Gun), "StartVisualRecoil");
-        static readonly System.Reflection.FieldInfo FI_RecoilBack =
-            HarmonyLib.AccessTools.Field(typeof(ItemAgent_Gun), "_recoilBack");
-        static readonly System.Reflection.FieldInfo FI_ShellParticle =
-            HarmonyLib.AccessTools.Field(typeof(ItemAgent_Gun), "shellParticle");
     }
-
-
-
 }

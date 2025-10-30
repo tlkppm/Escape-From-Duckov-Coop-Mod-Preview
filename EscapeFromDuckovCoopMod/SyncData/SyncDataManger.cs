@@ -16,18 +16,13 @@
 
 ﻿using LiteNetLib;
 using LiteNetLib.Utils;
-using System;
-using System.Collections.Generic;
-using System.Linq;
-using System.Text;
-using System.Threading.Tasks;
 
 namespace EscapeFromDuckovCoopMod
 {
     public class EquipmentSyncData
     {
-        public int SlotHash;
         public string ItemId;
+        public int SlotHash;
 
         public void Serialize(NetDataWriter writer)
         {
@@ -47,8 +42,8 @@ namespace EscapeFromDuckovCoopMod
 
     public class WeaponSyncData
     {
-        public int SlotHash;
         public string ItemId;
+        public int SlotHash;
 
         public void Serialize(NetDataWriter writer)
         {
@@ -65,8 +60,8 @@ namespace EscapeFromDuckovCoopMod
             };
         }
     }
+
     public static class SyncDataManger
     {
-
     }
 }

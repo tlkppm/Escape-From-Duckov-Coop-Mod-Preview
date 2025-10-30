@@ -16,63 +16,33 @@
 
 ﻿using System;
 using System.Collections.Generic;
-using System.Linq;
-using System.Text;
-using System.Threading.Tasks;
 using UnityEngine;
 
 namespace EscapeFromDuckovCoopMod
 {
     public class NetInterpolator : MonoBehaviour
     {
-        struct Snap { public double t; public Vector3 pos; public Quaternion rot; }
+        [Tooltip("渲染回看时间；越大越稳，越小越跟手")] public float interpolationBackTime = 0.12f;
 
-        [Tooltip("渲染回看时间；越大越稳，越小越跟手")]
-        public float interpolationBackTime = 0.12f;  
-        [Tooltip("缺帧时最多允许预测多久")]
-        public float maxExtrapolate = 0.05f;        
-        [Tooltip("误差过大时直接硬对齐距离")]
-        public float hardSnapDistance = 6f;          // 6 米 Sans看不懂就给设置个Tooltip
-        [Tooltip("位置平滑插值的瞬时权重")]
-        public float posLerpFactor = 0.9f;
-        [Tooltip("朝向平滑插值的瞬时权重")]
-        public float rotLerpFactor = 0.9f;
+        [Tooltip("缺帧时最多允许预测多久")] public float maxExtrapolate = 0.05f;
 
-        [Header("跑步反超护栏")]
-        public bool extrapolateWhenRunning = false; // 跑步默认禁用预测
-        public float runSpeedThreshold = 3.0f;      // 认为 >3 m/s 为跑步
+        [Tooltip("误差过大时直接硬对齐距离")] public float hardSnapDistance = 6f; // 6 米 Sans看不懂就给设置个Tooltip
 
-        Transform root;      // 驱动位置
-        Transform modelRoot; // 驱动朝向
+        [Tooltip("位置平滑插值的瞬时权重")] public float posLerpFactor = 0.9f;
 
-        readonly List<Snap> _buf = new List<Snap>(64);
-        Vector3 _lastVel = Vector3.zero;
+        [Tooltip("朝向平滑插值的瞬时权重")] public float rotLerpFactor = 0.9f;
 
-        public void Init(Transform rootT, Transform modelRootT)
-        {
-            root = rootT; modelRoot = modelRootT ? modelRootT : rootT;
-        }
+        [Header("跑步反超护栏")] public bool extrapolateWhenRunning; // 跑步默认禁用预测
 
-        // 喂一帧快照；when<0 则取到达时刻
-        public void Push(Vector3 pos, Quaternion rot, double when = -1)
-        {
-            if (when < 0) when = Time.unscaledTimeAsDouble;
-            if (_buf.Count > 0)
-            {
-                var prev = _buf[_buf.Count - 1];
-                double dt = when - prev.t;
-                if (dt > 1e-6) _lastVel = (pos - prev.pos) / (float)dt;
+        public float runSpeedThreshold = 3.0f; // 认为 >3 m/s 为跑步
 
-                // 若跨度太离谱，清空缓冲直接从新轨迹开始，避免长距离抖动
-                if ((pos - prev.pos).sqrMagnitude > hardSnapDistance * hardSnapDistance)
-                    _buf.Clear();
-            }
+        private readonly List<Snap> _buf = new List<Snap>(64);
+        private Vector3 _lastVel = Vector3.zero;
+        private Transform modelRoot; // 驱动朝向
 
-            _buf.Add(new Snap { t = when, pos = pos, rot = rot });
-            if (_buf.Count > 64) _buf.RemoveAt(0);
-        }
+        private Transform root; // 驱动位置
 
-        void LateUpdate()
+        private void LateUpdate()
         {
             // 懒初始化（有些对象刚克隆完组件还没取到）
             if (!root)
@@ -83,29 +53,34 @@ namespace EscapeFromDuckovCoopMod
                     root = cmc.transform;
                     modelRoot = cmc.modelRoot ? cmc.modelRoot.transform : cmc.transform;
                 }
-                else root = transform;
+                else
+                {
+                    root = transform;
+                }
             }
+
             if (!modelRoot) modelRoot = root;
             if (_buf.Count == 0) return;
 
-            double renderT = Time.unscaledTimeAsDouble - interpolationBackTime;
+            var renderT = Time.unscaledTimeAsDouble - interpolationBackTime;
 
             // 找到 [i-1, i] 包围 renderT 的两个样本
-            int i = 0;
+            var i = 0;
             while (i < _buf.Count && _buf[i].t < renderT) i++;
 
             if (i == 0)
             {
                 // 数据太新：直接用第一帧（刚开始的 100ms 内）
-                Apply(_buf[0].pos, _buf[0].rot, hardSnap: true);
+                Apply(_buf[0].pos, _buf[0].rot, true);
                 return;
             }
 
             if (i < _buf.Count)
             {
                 // 插值
-                var a = _buf[i - 1]; var b = _buf[i];
-                float t = (float)((renderT - a.t) / System.Math.Max(1e-6, b.t - a.t));
+                var a = _buf[i - 1];
+                var b = _buf[i];
+                var t = (float)((renderT - a.t) / Math.Max(1e-6, b.t - a.t));
                 var pos = Vector3.LerpUnclamped(a.pos, b.pos, t);
                 var rot = Quaternion.Slerp(a.rot, b.rot, t);
                 Apply(pos, rot);
@@ -116,13 +91,13 @@ namespace EscapeFromDuckovCoopMod
             else
             {
                 var last = _buf[_buf.Count - 1];
-                double dt = renderT - last.t;
+                var dt = renderT - last.t;
 
                 // 是否允许本帧预测
-                bool allow = (dt <= maxExtrapolate);
+                var allow = dt <= maxExtrapolate;
                 if (!extrapolateWhenRunning)
                 {
-                    float speed = _lastVel.magnitude;
+                    var speed = _lastVel.magnitude;
                     if (speed > runSpeedThreshold) allow = false; // 跑步：禁用预测，避免超前后拉
                 }
 
@@ -135,7 +110,32 @@ namespace EscapeFromDuckovCoopMod
             }
         }
 
-        void Apply(Vector3 pos, Quaternion rot, bool hardSnap = false)
+        public void Init(Transform rootT, Transform modelRootT)
+        {
+            root = rootT;
+            modelRoot = modelRootT ? modelRootT : rootT;
+        }
+
+        // 喂一帧快照；when<0 则取到达时刻
+        public void Push(Vector3 pos, Quaternion rot, double when = -1)
+        {
+            if (when < 0) when = Time.unscaledTimeAsDouble;
+            if (_buf.Count > 0)
+            {
+                var prev = _buf[_buf.Count - 1];
+                var dt = when - prev.t;
+                if (dt > 1e-6) _lastVel = (pos - prev.pos) / (float)dt;
+
+                // 若跨度太离谱，清空缓冲直接从新轨迹开始，避免长距离抖动
+                if ((pos - prev.pos).sqrMagnitude > hardSnapDistance * hardSnapDistance)
+                    _buf.Clear();
+            }
+
+            _buf.Add(new Snap { t = when, pos = pos, rot = rot });
+            if (_buf.Count > 64) _buf.RemoveAt(0);
+        }
+
+        private void Apply(Vector3 pos, Quaternion rot, bool hardSnap = false)
         {
             if (!root) return;
 
@@ -152,6 +152,13 @@ namespace EscapeFromDuckovCoopMod
             if (modelRoot)
                 modelRoot.rotation = Quaternion.Slerp(modelRoot.rotation, rot, rotLerpFactor);
         }
+
+        private struct Snap
+        {
+            public double t;
+            public Vector3 pos;
+            public Quaternion rot;
+        }
     }
 
     // 便捷：确保挂载并初始化
@@ -167,5 +174,4 @@ namespace EscapeFromDuckovCoopMod
             return ni;
         }
     }
-
 }

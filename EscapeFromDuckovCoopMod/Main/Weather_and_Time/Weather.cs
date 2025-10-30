@@ -14,15 +14,14 @@
 // MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
 // GNU Affero General Public License for more details.
 
-﻿using HarmonyLib;
+﻿using System.Collections.Generic;
+using System.Reflection;
+using Duckov.Utilities;
+using Duckov.Weathers;
+using HarmonyLib;
 using LiteNetLib;
 using LiteNetLib.Utils;
-using System;
-using System.Collections.Generic;
-using System.Linq;
-using System.Reflection;
-using System.Text;
-using System.Threading.Tasks;
+using UnityEngine;
 
 namespace EscapeFromDuckovCoopMod
 {
@@ -35,33 +34,75 @@ namespace EscapeFromDuckovCoopMod
         private NetDataWriter writer => Service?.writer;
         private NetPeer connectedPeer => Service?.connectedPeer;
         private PlayerStatus localPlayerStatus => Service?.localPlayerStatus;
+
         private bool networkStarted => Service != null && Service.networkStarted;
+
         // ========== 环境同步：主机广播 ==========
         public void Server_BroadcastEnvSync(NetPeer target = null)
         {
             if (!IsServer || netManager == null) return;
 
             // 1) 采样主机的“当前天数 + 当天秒数 + 时钟倍率”
-            long day = GameClock.Day;                                      // 只读属性，取值 OK :contentReference[oaicite:6]{index=6}
-            double secOfDay = GameClock.TimeOfDay.TotalSeconds;            // 当天秒数（0~86300） :contentReference[oaicite:7]{index=7}
-            float timeScale = 60f;
-            try { timeScale = GameClock.Instance.clockTimeScale; } catch { } // 公有字段 :contentReference[oaicite:8]{index=8}
+            var day = GameClock.Day; // 只读属性，取值 OK :contentReference[oaicite:6]{index=6}
+            var secOfDay = GameClock.TimeOfDay.TotalSeconds; // 当天秒数（0~86300） :contentReference[oaicite:7]{index=7}
+            var timeScale = 60f;
+            try
+            {
+                timeScale = GameClock.Instance.clockTimeScale;
+            }
+            catch
+            {
+            } // 公有字段 :contentReference[oaicite:8]{index=8}
 
             // 2) 采样天气：seed / 强制天气开关和值 / 当前天气（兜底）/（冗余）风暴等级
-            var wm = Duckov.Weathers.WeatherManager.Instance;
-            int seed = -1;
-            bool forceWeather = false;
-            int forceWeatherVal = (int)Duckov.Weathers.Weather.Sunny;
-            int currentWeather = (int)Duckov.Weathers.Weather.Sunny;
+            var wm = WeatherManager.Instance;
+            var seed = -1;
+            var forceWeather = false;
+            var forceWeatherVal = (int)Duckov.Weathers.Weather.Sunny;
+            var currentWeather = (int)Duckov.Weathers.Weather.Sunny;
             byte stormLevel = 0;
 
             if (wm != null)
             {
-                try { seed = (int)AccessTools.Field(wm.GetType(), "seed").GetValue(wm); } catch { }
-                try { forceWeather = (bool)AccessTools.Field(wm.GetType(), "forceWeather").GetValue(wm); } catch { } // 若字段名不同可改为属性读取
-                try { forceWeatherVal = (int)AccessTools.Field(wm.GetType(), "forceWeatherValue").GetValue(wm); } catch { }
-                try { currentWeather = (int)Duckov.Weathers.WeatherManager.GetWeather(); } catch { } // 公共静态入口 :contentReference[oaicite:9]{index=9}
-                try { stormLevel = (byte)wm.Storm.GetStormLevel(GameClock.Now); } catch { } // 基于 Now 计算 :contentReference[oaicite:10]{index=10}
+                try
+                {
+                    seed = (int)AccessTools.Field(wm.GetType(), "seed").GetValue(wm);
+                }
+                catch
+                {
+                }
+
+                try
+                {
+                    forceWeather = (bool)AccessTools.Field(wm.GetType(), "forceWeather").GetValue(wm);
+                }
+                catch
+                {
+                } // 若字段名不同可改为属性读取
+
+                try
+                {
+                    forceWeatherVal = (int)AccessTools.Field(wm.GetType(), "forceWeatherValue").GetValue(wm);
+                }
+                catch
+                {
+                }
+
+                try
+                {
+                    currentWeather = (int)WeatherManager.GetWeather();
+                }
+                catch
+                {
+                } // 公共静态入口 :contentReference[oaicite:9]{index=9}
+
+                try
+                {
+                    stormLevel = (byte)wm.Storm.GetStormLevel(GameClock.Now);
+                }
+                catch
+                {
+                } // 基于 Now 计算 :contentReference[oaicite:10]{index=10}
             }
 
             // 3) 打包并发出
@@ -78,19 +119,19 @@ namespace EscapeFromDuckovCoopMod
 
             try
             {
-                var all = UnityEngine.Object.FindObjectsOfType<Duckov.Utilities.LootBoxLoader>(true);
+                var all = Object.FindObjectsOfType<LootBoxLoader>(true);
                 // 收集 (key, active)
-                var tmp = new System.Collections.Generic.List<(int k, bool on)>(all.Length);
+                var tmp = new List<(int k, bool on)>(all.Length);
                 foreach (var l in all)
                 {
                     if (!l || !l.gameObject) continue;
-                    int k = LootManager.Instance.ComputeLootKey(l.transform);
-                    bool on = l.gameObject.activeSelf; // 已经由 RandomActive 决定
+                    var k = LootManager.Instance.ComputeLootKey(l.transform);
+                    var on = l.gameObject.activeSelf; // 已经由 RandomActive 决定
                     tmp.Add((k, on));
                 }
 
                 w.Put(tmp.Count);
-                for (int i = 0; i < tmp.Count; ++i)
+                for (var i = 0; i < tmp.Count; ++i)
                 {
                     w.Put(tmp[i].k);
                     w.Put(tmp[i].on);
@@ -104,26 +145,41 @@ namespace EscapeFromDuckovCoopMod
 
             // Door
 
-            bool includeDoors = (target != null);
+            var includeDoors = target != null;
             if (includeDoors)
             {
-                var doors = UnityEngine.Object.FindObjectsOfType<Door>(true);
-                var tmp = new System.Collections.Generic.List<(int key, bool closed)>(doors.Length);
+                var doors = Object.FindObjectsOfType<Door>(true);
+                var tmp = new List<(int key, bool closed)>(doors.Length);
 
                 foreach (var d in doors)
                 {
                     if (!d) continue;
-                    int k = 0;
-                    try { k = (int)AccessTools.Field(typeof(Door), "doorClosedDataKeyCached").GetValue(d); } catch { }
+                    var k = 0;
+                    try
+                    {
+                        k = (int)AccessTools.Field(typeof(Door), "doorClosedDataKeyCached").GetValue(d);
+                    }
+                    catch
+                    {
+                    }
+
                     if (k == 0) k = COOPManager.Door.ComputeDoorKey(d.transform);
 
                     bool closed;
-                    try { closed = !d.IsOpen; } catch { closed = true; } // 兜底：没取到就当作关闭
+                    try
+                    {
+                        closed = !d.IsOpen;
+                    }
+                    catch
+                    {
+                        closed = true;
+                    } // 兜底：没取到就当作关闭
+
                     tmp.Add((k, closed));
                 }
 
                 w.Put(tmp.Count);
-                for (int i = 0; i < tmp.Count; ++i)
+                for (var i = 0; i < tmp.Count; ++i)
                 {
                     w.Put(tmp[i].key);
                     w.Put(tmp[i].closed);
@@ -152,7 +208,8 @@ namespace EscapeFromDuckovCoopMod
         }
 
         // ========== 环境同步：客户端应用 ==========
-        public void Client_ApplyEnvSync(long day, double secOfDay, float timeScale, int seed, bool forceWeather, int forceWeatherVal, int currentWeather /*兜底*/, byte stormLevel /*冗余*/)
+        public void Client_ApplyEnvSync(long day, double secOfDay, float timeScale, int seed, bool forceWeather, int forceWeatherVal, int currentWeather /*兜底*/,
+            byte stormLevel /*冗余*/)
         {
             // 1) 绝对对时：直接改 GameClock 的私有字段（避免 StepTimeTil 无法回拨的问题）
             try
@@ -162,45 +219,48 @@ namespace EscapeFromDuckovCoopMod
                 {
                     AccessTools.Field(inst.GetType(), "days")?.SetValue(inst, day);
                     AccessTools.Field(inst.GetType(), "secondsOfDay")?.SetValue(inst, secOfDay);
-                    try { inst.clockTimeScale = timeScale; } catch { }
+                    try
+                    {
+                        inst.clockTimeScale = timeScale;
+                    }
+                    catch
+                    {
+                    }
 
                     // 触发一次 onGameClockStep（用 0 步长调用内部 Step，保证监听者能刷新）
                     typeof(GameClock).GetMethod("Step", BindingFlags.NonPublic | BindingFlags.Static)?.Invoke(null, new object[] { 0f });
                 }
             }
-            catch { }
+            catch
+            {
+            }
 
             // 2) 天气随机种子：设到 WeatherManager，并让它把种子分发给子模块
             try
             {
-                var wm = Duckov.Weathers.WeatherManager.Instance;
+                var wm = WeatherManager.Instance;
                 if (wm != null && seed != -1)
                 {
-                    AccessTools.Field(wm.GetType(), "seed")?.SetValue(wm, seed);                // 写 seed :contentReference[oaicite:11]{index=11}
-                    wm.GetType().GetMethod("SetupModules", BindingFlags.NonPublic | BindingFlags.Instance)?.Invoke(wm, null); // 把 seed 带给 Storm/Precipitation :contentReference[oaicite:12]{index=12}
-                    AccessTools.Field(wm.GetType(), "_weatherDirty")?.SetValue(wm, true);       // 标脏以便下帧重新取 GetWeather
+                    AccessTools.Field(wm.GetType(), "seed")?.SetValue(wm, seed); // 写 seed :contentReference[oaicite:11]{index=11}
+                    wm.GetType().GetMethod("SetupModules", BindingFlags.NonPublic | BindingFlags.Instance)
+                        ?.Invoke(wm, null); // 把 seed 带给 Storm/Precipitation :contentReference[oaicite:12]{index=12}
+                    AccessTools.Field(wm.GetType(), "_weatherDirty")?.SetValue(wm, true); // 标脏以便下帧重新取 GetWeather
                 }
             }
-            catch { }
+            catch
+            {
+            }
 
             // 3) 强制天气（兜底）：若主机处于强制状态，则客户端也强制到同一值
             try
             {
-                Duckov.Weathers.WeatherManager.SetForceWeather(forceWeather, (Duckov.Weathers.Weather)forceWeatherVal); // 公共静态入口 :contentReference[oaicite:13]{index=13}
+                WeatherManager.SetForceWeather(forceWeather, (Duckov.Weathers.Weather)forceWeatherVal); // 公共静态入口 :contentReference[oaicite:13]{index=13}
             }
-            catch { }
+            catch
+            {
+            }
 
             // 4) 无需专门同步风暴 ETA：基于 Now+seed，Storm.* 会得到一致的结果（UI 每 0.5s 刷新，见 TimeOfDayDisplay） :contentReference[oaicite:14]{index=14}
         }
-
-
-
-
-
-
-
-
-
-
     }
 }

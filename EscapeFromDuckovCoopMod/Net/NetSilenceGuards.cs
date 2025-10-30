@@ -15,18 +15,13 @@
 // GNU Affero General Public License for more details.
 
 ﻿using System;
-using System.Collections.Generic;
-using System.Linq;
-using System.Text;
-using System.Threading.Tasks;
 
 namespace EscapeFromDuckovCoopMod
 {
     public static class NetSilenceGuards
     {
         // 线程级：避免并发串线
-        [ThreadStatic] public static bool InPickupItem;           // 正在执行 CharacterItemControl.PickupItem
+        [ThreadStatic] public static bool InPickupItem; // 正在执行 CharacterItemControl.PickupItem
         [ThreadStatic] public static bool InCapacityShrinkCleanup; // 正在执行容量下调清理（可选，见下）
     }
-
 }

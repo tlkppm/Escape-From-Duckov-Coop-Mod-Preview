@@ -16,11 +16,6 @@
 
 ﻿using LiteNetLib;
 using LiteNetLib.Utils;
-using System;
-using System.Collections.Generic;
-using System.Linq;
-using System.Text;
-using System.Threading.Tasks;
 using UnityEngine;
 
 namespace EscapeFromDuckovCoopMod
@@ -35,6 +30,7 @@ namespace EscapeFromDuckovCoopMod
         private NetPeer connectedPeer => Service?.connectedPeer;
         private PlayerStatus localPlayerStatus => Service?.localPlayerStatus;
         private bool networkStarted => Service != null && Service.networkStarted;
+
         public void BroadcastMeleeSwing(string playerId, float dealDelay)
         {
             foreach (var p in netManager.ConnectedPeerList)
@@ -54,33 +50,36 @@ namespace EscapeFromDuckovCoopMod
 
             if (baseDir.sqrMagnitude < 1e-8f)
             {
-                var fallback = (gun != null && gun.muzzle != null) ? gun.muzzle.forward : Vector3.forward;
+                var fallback = gun != null && gun.muzzle != null ? gun.muzzle.forward : Vector3.forward;
                 baseDir = fallback.sqrMagnitude < 1e-8f ? Vector3.forward : fallback.normalized;
             }
 
             if (gun && gun.muzzle)
             {
-                int weaponType = (gun.Item != null) ? gun.Item.TypeID : 0;
-               FxManager.Client_PlayLocalShotFx(gun, gun.muzzle, weaponType);
+                var weaponType = gun.Item != null ? gun.Item.TypeID : 0;
+                FxManager.Client_PlayLocalShotFx(gun, gun.muzzle, weaponType);
             }
 
             writer.Reset();
-            writer.Put((byte)Op.FIRE_REQUEST);        // opcode
-            writer.Put(localPlayerStatus.EndPoint);   // shooterId
-            writer.Put(gun.Item.TypeID);              // weaponType
+            writer.Put((byte)Op.FIRE_REQUEST); // opcode
+            writer.Put(localPlayerStatus.EndPoint); // shooterId
+            writer.Put(gun.Item.TypeID); // weaponType
             writer.PutV3cm(muzzle);
             writer.PutDir(baseDir);
             writer.PutV3cm(firstCheckStart);
 
             // === 新增：把当前这一枪的散布与ADS状态作为提示发给主机 ===
-            float clientScatter = 0f;
-            float ads01 = 0f;
+            var clientScatter = 0f;
+            var ads01 = 0f;
             try
             {
                 clientScatter = Mathf.Max(0f, gun.CurrentScatter); // 客户端这帧真实散布（已包含ADS影响）
-                ads01 = (gun.IsInAds ? 1f : 0f);
+                ads01 = gun.IsInAds ? 1f : 0f;
             }
-            catch { }
+            catch
+            {
+            }
+
             writer.Put(clientScatter);
             writer.Put(ads01);
 
@@ -88,18 +87,18 @@ namespace EscapeFromDuckovCoopMod
             var hint = new ProjectileContext();
             try
             {
-                bool hasBulletItem = (gun.BulletItem != null);
+                var hasBulletItem = gun.BulletItem != null;
 
                 // 伤害
-                float charMul = gun.CharacterDamageMultiplier;
-                float bulletMul = hasBulletItem ? Mathf.Max(0.0001f, gun.BulletDamageMultiplier) : 1f;
-                int shots = Mathf.Max(1, gun.ShotCount);
+                var charMul = gun.CharacterDamageMultiplier;
+                var bulletMul = hasBulletItem ? Mathf.Max(0.0001f, gun.BulletDamageMultiplier) : 1f;
+                var shots = Mathf.Max(1, gun.ShotCount);
                 hint.damage = gun.Damage * bulletMul * charMul / shots;
                 if (gun.Damage > 1f && hint.damage < 1f) hint.damage = 1f;
 
                 // 暴击
-                float bulletCritRateGain = hasBulletItem ? gun.bulletCritRateGain : 0f;
-                float bulletCritDmgGain = hasBulletItem ? gun.BulletCritDamageFactorGain : 0f;
+                var bulletCritRateGain = hasBulletItem ? gun.bulletCritRateGain : 0f;
+                var bulletCritDmgGain = hasBulletItem ? gun.BulletCritDamageFactorGain : 0f;
                 hint.critDamageFactor = (gun.CritDamageFactor + bulletCritDmgGain) * (1f + gun.CharacterGunCritDamageGain);
                 hint.critRate = gun.CritRate * (1f + gun.CharacterGunCritRateGain + bulletCritRateGain);
 
@@ -122,12 +121,16 @@ namespace EscapeFromDuckovCoopMod
                     hint.buffChance = gun.BulletBuffChanceMultiplier * gun.BuffChance;
                     hint.bleedChance = gun.BulletBleedChance;
                 }
-                hint.penetrate = gun.Penetrate;
-                hint.fromWeaponItemID = (gun.Item != null ? gun.Item.TypeID : 0);
-            }
-            catch { /* 忽略 */ }
 
-            writer.PutProjectilePayload(hint);  // 带着提示载荷发给主机
+                hint.penetrate = gun.Penetrate;
+                hint.fromWeaponItemID = gun.Item != null ? gun.Item.TypeID : 0;
+            }
+            catch
+            {
+                /* 忽略 */
+            }
+
+            writer.PutProjectilePayload(hint); // 带着提示载荷发给主机
             connectedPeer.Send(writer, DeliveryMethod.ReliableOrdered);
         }
 
@@ -142,7 +145,5 @@ namespace EscapeFromDuckovCoopMod
             writer.PutDir(snapDir);
             connectedPeer.Send(writer, DeliveryMethod.ReliableOrdered);
         }
-
-
     }
 }

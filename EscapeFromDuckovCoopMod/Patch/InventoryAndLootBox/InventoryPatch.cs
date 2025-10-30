@@ -1,4 +1,4 @@
-// Escape-From-Duckov-Coop-Mod-Preview
+﻿// Escape-From-Duckov-Coop-Mod-Preview
 // Copyright (C) 2025  Mr.sans and InitLoader's team
 //
 // This program is not a free software.
@@ -529,11 +529,12 @@ internal static class Patch_Inventory_AddAt_BroadcastOnServer
         var m = ModBehaviourF.Instance;
         if (m == null || !m.networkStarted || !m.IsServer) return;
         if (!__result || COOPManager.LootNet._serverApplyingLoot) return;
-        if (!LootboxDetectUtil.IsLootboxInventory(__instance)) return;
 
-        if (!LootboxDetectUtil.IsLootboxInventory(__instance) || LootboxDetectUtil.IsPrivateInventory(__instance)) return;
-
-        COOPManager.LootNet.Server_SendLootboxState(null, __instance);
+        DeferedRunner.EndOfFrame(() =>
+        {
+            if (!LootboxDetectUtil.IsLootboxInventory(__instance) || LootboxDetectUtil.IsPrivateInventory(__instance)) return;
+            COOPManager.LootNet.Server_SendLootboxState(null, __instance);
+        });
     }
 }
 
@@ -547,14 +548,16 @@ internal static class Patch_Inventory_AddItem_BroadcastLootState
         if (m == null || !m.networkStarted || !m.IsServer) return;
         if (!__result || COOPManager.LootNet._serverApplyingLoot) return;
 
-        if (!LootboxDetectUtil.IsLootboxInventory(__instance) || LootboxDetectUtil.IsPrivateInventory(__instance)) return;
+        DeferedRunner.EndOfFrame(() =>
+        {
+            if (!LootboxDetectUtil.IsLootboxInventory(__instance) || LootboxDetectUtil.IsPrivateInventory(__instance)) return;
 
+            var dict = InteractableLootbox.Inventories;
+            var isLootInv = dict != null && dict.ContainsValue(__instance);
+            if (!isLootInv) return;
 
-        var dict = InteractableLootbox.Inventories;
-        var isLootInv = dict != null && dict.ContainsValue(__instance);
-        if (!isLootInv) return;
-
-        COOPManager.LootNet.Server_SendLootboxState(null, __instance);
+            COOPManager.LootNet.Server_SendLootboxState(null, __instance);
+        });
     }
 }
 
@@ -675,12 +678,15 @@ internal static class Patch_ServerBroadcast_OnAddAt
         var m = ModBehaviourF.Instance;
         if (m == null || !m.networkStarted || !m.IsServer) return;
         if (!__result || COOPManager.LootNet._serverApplyingLoot) return;
-        if (!LootboxDetectUtil.IsLootboxInventory(__instance) || LootboxDetectUtil.IsPrivateInventory(__instance)) return;
 
         // ★ 新增：静音期内跳过群发（真正有人打开时仍会单播，应答不受影响）
         if (LootManager.Instance.Server_IsLootMuted(__instance)) return;
 
-        COOPManager.LootNet.Server_SendLootboxState(null, __instance);
+        DeferedRunner.EndOfFrame(() =>
+        {
+            if (!LootboxDetectUtil.IsLootboxInventory(__instance) || LootboxDetectUtil.IsPrivateInventory(__instance)) return;
+            COOPManager.LootNet.Server_SendLootboxState(null, __instance);
+        });
     }
 }
 

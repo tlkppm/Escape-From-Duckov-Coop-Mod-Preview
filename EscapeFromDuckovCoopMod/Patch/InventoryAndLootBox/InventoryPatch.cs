@@ -579,10 +579,13 @@ internal static class Patch_Inventory_RemoveAt_BroadcastOnServer
         var m = ModBehaviourF.Instance;
         if (m == null || !m.networkStarted || !m.IsServer) return; // 仅主机
         if (!__result || COOPManager.LootNet._serverApplyingLoot) return; // 跳过失败/网络路径内部调用
-        if (!LootboxDetectUtil.IsLootboxInventory(__instance)) return; // 只处理战利品容器
-        if (LootboxDetectUtil.IsPrivateInventory(__instance)) return; // 跳过玩家仓库/宠物包等私有库存
 
-        COOPManager.LootNet.Server_SendLootboxState(null, __instance); // 广播给所有客户端
+        DeferedRunner.EndOfFrame(() =>
+        {
+            // 只处理战利品容器，跳过玩家仓库/宠物包等私有库存
+            if (!LootboxDetectUtil.IsLootboxInventory(__instance) || LootboxDetectUtil.IsPrivateInventory(__instance)) return;
+            COOPManager.LootNet.Server_SendLootboxState(null, __instance); // 广播给所有客户端
+        });
     }
 }
 
@@ -649,10 +652,14 @@ internal static class Patch_ServerBroadcast_OnRemoveAt
         var m = ModBehaviourF.Instance;
         if (m == null || !m.networkStarted || !m.IsServer) return;
         if (!__result || COOPManager.LootNet._serverApplyingLoot) return;
-        if (!LootboxDetectUtil.IsLootboxInventory(__instance) || LootboxDetectUtil.IsPrivateInventory(__instance)) return;
 
         if (LootManager.Instance.Server_IsLootMuted(__instance)) return; // ★ 新增
-        COOPManager.LootNet.Server_SendLootboxState(null, __instance);
+
+        DeferedRunner.EndOfFrame(() =>
+        {
+            if (!LootboxDetectUtil.IsLootboxInventory(__instance) || LootboxDetectUtil.IsPrivateInventory(__instance)) return;
+            COOPManager.LootNet.Server_SendLootboxState(null, __instance);
+        });
     }
 }
 

@@ -701,6 +701,15 @@ public class SceneNet : MonoBehaviour
         catch
         {
         }
+
+        // ===== 场景切换重连功能 =====
+        // 在Client_SceneGateAsync完成后触发重连，此时服务端已经准备好接受新连接
+        // 这是重连的最佳时机，避免在服务端未准备好时连接失败
+        if (!IsServer && Service != null)
+        {
+            Debug.Log("[COOP] Client_SceneGateAsync 完成，开始重连以确保同步");
+            Service.ReconnectAfterSceneLoad().Forget();
+        }
     }
 
     // 主机：自身初始化完成 → 开门；已举手的立即放行；之后若有迟到的 READY，也会单放行

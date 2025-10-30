@@ -7,16 +7,16 @@ echo Duckov Mod Environment Setup (Permanent)
 echo ========================================
 echo.
 
-echo This script will permanently set DUCKOV_GAME_MANAGED user environment variable.
+echo This script will permanently set DUCKOV_GAME_DIRECTORY user environment variable.
 echo.
-echo Please enter the full path to your game's Managed folder.
-echo Example: C:\Steam\steamapps\common\Escape from Duckov\Duckov_Data\Managed
+echo Please enter the full path to your game's folder.
+echo Example: C:\Steam\steamapps\common\Escape from Duckov
 echo.
 
-set /p "DUCKOV_GAME_MANAGED=Enter path: "
+set /p "DUCKOV_GAME_DIRECTORY=Enter path: "
 
 REM Check if input is empty
-if "!DUCKOV_GAME_MANAGED!"=="" (
+if "!DUCKOV_GAME_DIRECTORY!"=="" (
     echo.
     echo [ERROR] Path cannot be empty!
     echo.
@@ -29,18 +29,18 @@ echo ========================================
 echo Setting environment variable...
 echo ========================================
 echo.
-echo Path to set: !DUCKOV_GAME_MANAGED!
+echo Path to set: !DUCKOV_GAME_DIRECTORY!
 echo.
 echo Setting permanent user environment variable...
 
 REM Use setx to set user environment variable (no admin rights needed for user variables)
-setx DUCKOV_GAME_MANAGED "!DUCKOV_GAME_MANAGED!"
+setx DUCKOV_GAME_DIRECTORY "!DUCKOV_GAME_DIRECTORY!"
 if !errorLevel! equ 0 (
     echo.
-    echo [SUCCESS] DUCKOV_GAME_MANAGED set successfully
+    echo [SUCCESS] DUCKOV_GAME_DIRECTORY set successfully
 ) else (
     echo.
-    echo [FAILED] DUCKOV_GAME_MANAGED failed to set
+    echo [FAILED] DUCKOV_GAME_DIRECTORY failed to set
     echo Error code: !errorLevel!
 )
 
@@ -50,7 +50,7 @@ echo Environment variable set successfully!
 echo ========================================
 echo.
 echo Variable set:
-echo   DUCKOV_GAME_MANAGED=!DUCKOV_GAME_MANAGED!
+echo   DUCKOV_GAME_DIRECTORY=!DUCKOV_GAME_DIRECTORY!
 echo.
 echo IMPORTANT:
 echo 1. Restart any open programs to load new environment variable

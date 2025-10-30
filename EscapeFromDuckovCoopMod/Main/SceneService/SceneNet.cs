@@ -683,7 +683,7 @@ public class SceneNet : MonoBehaviour
         {
             try
             {
-                SceneLoader.LoadingComment = "[Coop] 等待主机完成加载… (如迟迟没有进入等待100秒后自动进入)";
+                SceneLoader.LoadingComment = CoopLocalization.Get("scene.waitingForHost");
             }
             catch
             {
@@ -696,7 +696,7 @@ public class SceneNet : MonoBehaviour
         //Client_ReportSelfHealth_IfReadyOnce();
         try
         {
-            SceneLoader.LoadingComment = "主机已完成，正在进入…";
+            SceneLoader.LoadingComment = CoopLocalization.Get("scene.hostReady");
         }
         catch
         {

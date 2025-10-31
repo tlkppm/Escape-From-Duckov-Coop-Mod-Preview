@@ -152,8 +152,9 @@ public class ClientPlayerApply
                     var pfb = gunSetting && gunSetting.bulletPfb
                         ? gunSetting.bulletPfb
                         : GameplayDataSettings.Prefabs.DefaultBullet;
-                    LoaclPlayerManager.Instance._projCacheByWeaponType[typeId] = pfb;
-                    LoaclPlayerManager.Instance._muzzleFxCacheByWeaponType[typeId] = gunSetting ? gunSetting.muzzleFxPfb : null;
+                    LocalPlayerManager.Instance._projCacheByWeaponType[typeId] = pfb;
+                    LocalPlayerManager.Instance._muzzleFxCacheByWeaponType[typeId] =
+                        gunSetting ? gunSetting.muzzleFxPfb : null;
                 }
             }
             else

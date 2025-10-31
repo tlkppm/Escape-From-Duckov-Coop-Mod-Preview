@@ -110,7 +110,8 @@ internal static class Patch_FSM_OnGraphUpdate_MainRedirect
         NcMainRedirector.Clear();
     }
 
-    private static CharacterMainControl FindNearestEnemyPlayer(ModBehaviourF mod, CharacterMainControl ai, Scene scene, Vector3 aiPos)
+    private static CharacterMainControl FindNearestEnemyPlayer(ModBehaviourF mod, CharacterMainControl ai, Scene scene,
+        Vector3 aiPos)
     {
         CharacterMainControl best = null;
         var bestD2 = float.MaxValue;
@@ -121,7 +122,7 @@ internal static class Patch_FSM_OnGraphUpdate_MainRedirect
             if (!cmc.gameObject.activeInHierarchy) return;
             if (cmc.gameObject.scene != scene) return;
             if (cmc.Team == ai.Team) return;
-            if (!LoaclPlayerManager.Instance.IsAlive(cmc)) return;
+            if (!LocalPlayerManager.Instance.IsAlive(cmc)) return;
 
             var d2 = (cmc.transform.position - aiPos).sqrMagnitude;
             if (d2 < bestD2)

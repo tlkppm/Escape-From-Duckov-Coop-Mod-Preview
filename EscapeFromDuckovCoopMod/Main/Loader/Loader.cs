@@ -44,7 +44,7 @@ public class ModBehaviour : Duckov.Modding.ModBehaviour
         go.AddComponent<AIRequest>();
         go.AddComponent<Send_ClientStatus>();
         go.AddComponent<HealthM>();
-        go.AddComponent<LoaclPlayerManager>();
+        go.AddComponent<LocalPlayerManager>();
         go.AddComponent<SendLocalPlayerStatus>();
         go.AddComponent<Spectator>();
         go.AddComponent<DeadLootBox>();
@@ -60,7 +60,7 @@ public class ModBehaviour : Duckov.Modding.ModBehaviour
     {
         SafeInit<SceneNet>(sn => sn.Init());
         SafeInit<LootManager>(lm => lm.Init());
-        SafeInit<LoaclPlayerManager>(lpm => lpm.Init());
+        SafeInit<LocalPlayerManager>(lpm => lpm.Init());
         SafeInit<HealthM>(hm => hm.Init());
         SafeInit<SendLocalPlayerStatus>(s => s.Init());
         SafeInit<Spectator>(s => s.Init());

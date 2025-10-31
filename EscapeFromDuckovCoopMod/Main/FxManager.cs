@@ -45,8 +45,12 @@ public static class MeleeFx
             ctrl.MeleeWeaponSocket,
             // 某些模型可能把近战也挂在左右手
             // 这些字段若不存在/为 null，不会报错
-            ctrl.GetType().GetField("RightHandSocket") != null ? (Transform)ctrl.GetType().GetField("RightHandSocket").GetValue(ctrl) : null,
-            ctrl.GetType().GetField("LefthandSocket") != null ? (Transform)ctrl.GetType().GetField("LefthandSocket").GetValue(ctrl) : null
+            ctrl.GetType().GetField("RightHandSocket") != null
+                ? (Transform)ctrl.GetType().GetField("RightHandSocket").GetValue(ctrl)
+                : null,
+            ctrl.GetType().GetField("LefthandSocket") != null
+                ? (Transform)ctrl.GetType().GetField("LefthandSocket").GetValue(ctrl)
+                : null
         };
 
         foreach (var s in sockets)
@@ -163,7 +167,7 @@ public static class FxManager
             ItemAgent_Gun gun = null;
             Transform muzzleTf = null;
             if (!string.IsNullOrEmpty(shooterId))
-                if (LoaclPlayerManager.Instance._gunCacheByShooter.TryGetValue(shooterId, out var cached) && cached.gun)
+                if (LocalPlayerManager.Instance._gunCacheByShooter.TryGetValue(shooterId, out var cached) && cached.gun)
                 {
                     gun = cached.gun;
                     muzzleTf = cached.muzzle;
@@ -177,16 +181,20 @@ public static class FxManager
 
                 if (!gun && model)
                 {
-                    if (model.RightHandSocket && !gun) gun = model.RightHandSocket.GetComponentInChildren<ItemAgent_Gun>(true);
-                    if (model.LefthandSocket && !gun) gun = model.LefthandSocket.GetComponentInChildren<ItemAgent_Gun>(true);
-                    if (model.MeleeWeaponSocket && !gun) gun = model.MeleeWeaponSocket.GetComponentInChildren<ItemAgent_Gun>(true);
+                    if (model.RightHandSocket && !gun)
+                        gun = model.RightHandSocket.GetComponentInChildren<ItemAgent_Gun>(true);
+                    if (model.LefthandSocket && !gun)
+                        gun = model.LefthandSocket.GetComponentInChildren<ItemAgent_Gun>(true);
+                    if (model.MeleeWeaponSocket && !gun)
+                        gun = model.MeleeWeaponSocket.GetComponentInChildren<ItemAgent_Gun>(true);
                 }
 
                 if (!gun) gun = cmc ? cmc.CurrentHoldItemAgent as ItemAgent_Gun : null;
 
                 if (gun && gun.muzzle && !muzzleTf) muzzleTf = gun.muzzle;
 
-                if (!string.IsNullOrEmpty(shooterId) && gun) LoaclPlayerManager.Instance._gunCacheByShooter[shooterId] = (gun, muzzleTf);
+                if (!string.IsNullOrEmpty(shooterId) && gun)
+                    LocalPlayerManager.Instance._gunCacheByShooter[shooterId] = (gun, muzzleTf);
             }
 
             // 4) 没有 muzzle 就用兜底挂点（只负责火光，不做抛壳/回座力）
@@ -273,7 +281,7 @@ public static class FxManager
         GameObject ResolveMuzzlePrefab()
         {
             GameObject fxPfb = null;
-            LoaclPlayerManager.Instance._muzzleFxCacheByWeaponType.TryGetValue(weaponType, out fxPfb);
+            LocalPlayerManager.Instance._muzzleFxCacheByWeaponType.TryGetValue(weaponType, out fxPfb);
             if (!fxPfb && gun && gun.GunItemSetting) fxPfb = gun.GunItemSetting.muzzleFxPfb;
             if (!fxPfb) fxPfb = defaultMuzzleFx;
             return fxPfb;

@@ -170,8 +170,9 @@ public class HostPlayerApply
                                  (model.MeleeWeaponSocket ? model.MeleeWeaponSocket.Find("Muzzle") : null);
                         }
 
-                        if (playerStatuses.TryGetValue(peer, out var ps) && ps != null && !string.IsNullOrEmpty(ps.EndPoint) && gun)
-                            LoaclPlayerManager.Instance._gunCacheByShooter[ps.EndPoint] = (gun, mz);
+                        if (playerStatuses.TryGetValue(peer, out var ps) && ps != null &&
+                            !string.IsNullOrEmpty(ps.EndPoint) && gun)
+                            LocalPlayerManager.Instance._gunCacheByShooter[ps.EndPoint] = (gun, mz);
                     }
                     catch
                     {
@@ -182,8 +183,9 @@ public class HostPlayerApply
                     var pfb = gunSetting && gunSetting.bulletPfb
                         ? gunSetting.bulletPfb
                         : GameplayDataSettings.Prefabs.DefaultBullet;
-                    LoaclPlayerManager.Instance._projCacheByWeaponType[typeId] = pfb;
-                    LoaclPlayerManager.Instance._muzzleFxCacheByWeaponType[typeId] = gunSetting ? gunSetting.muzzleFxPfb : null;
+                    LocalPlayerManager.Instance._projCacheByWeaponType[typeId] = pfb;
+                    LocalPlayerManager.Instance._muzzleFxCacheByWeaponType[typeId] =
+                        gunSetting ? gunSetting.muzzleFxPfb : null;
                 }
             }
             else
@@ -201,7 +203,8 @@ public class HostPlayerApply
     public void PlayShootAnimOnServerPeer(NetPeer peer)
     {
         if (!remoteCharacters.TryGetValue(peer, out var who) || !who) return;
-        var animCtrl = who.GetComponent<CharacterMainControl>().characterModel.GetComponentInParent<CharacterAnimationControl_MagicBlend>();
+        var animCtrl = who.GetComponent<CharacterMainControl>().characterModel
+            .GetComponentInParent<CharacterAnimationControl_MagicBlend>();
         if (animCtrl && animCtrl.animator) animCtrl.OnAttack(); // 这个控制器里会触发 Attack trigger + 攻击图层权重曲线
     }
 }

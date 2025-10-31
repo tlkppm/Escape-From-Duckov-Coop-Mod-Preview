@@ -230,12 +230,14 @@ public class NetService : MonoBehaviour, INetEventListener
         Debug.LogError(CoopLocalization.Get("net.networkError", socketError, endPoint.ToString()));
     }
 
-    public void OnNetworkReceive(NetPeer peer, NetPacketReader reader, byte channelNumber, DeliveryMethod deliveryMethod)
+    public void OnNetworkReceive(NetPeer peer, NetPacketReader reader, byte channelNumber,
+        DeliveryMethod deliveryMethod)
     {
         ModBehaviourF.Instance.OnNetworkReceive(peer, reader, channelNumber, deliveryMethod);
     }
 
-    public void OnNetworkReceiveUnconnected(IPEndPoint remoteEndPoint, NetPacketReader reader, UnconnectedMessageType messageType)
+    public void OnNetworkReceiveUnconnected(IPEndPoint remoteEndPoint, NetPacketReader reader,
+        UnconnectedMessageType messageType)
     {
         var msg = reader.GetString();
 
@@ -291,13 +293,9 @@ public class NetService : MonoBehaviour, INetEventListener
         {
             var started = netManager.Start(port);
             if (started)
-            {
                 Debug.Log(CoopLocalization.Get("net.serverStarted", port));
-            }
             else
-            {
                 Debug.LogError(CoopLocalization.Get("net.serverStartFailed"));
-            }
         }
         else
         {
@@ -325,7 +323,7 @@ public class NetService : MonoBehaviour, INetEventListener
         clientPlayerStatuses.Clear();
         clientRemoteCharacters.Clear();
 
-        LoaclPlayerManager.Instance.InitializeLocalPlayer();
+        LocalPlayerManager.Instance.InitializeLocalPlayer();
         if (IsServer)
         {
             ItemAgent_Gun.OnMainCharacterShootEvent -= COOPManager.WeaponHandle.Host_OnMainCharacterShoot;
@@ -469,7 +467,8 @@ public class NetService : MonoBehaviour, INetEventListener
             return $"Host:{port}";
         }
 
-        if (playerStatuses != null && playerStatuses.TryGetValue(peer, out var st) && !string.IsNullOrEmpty(st.EndPoint))
+        if (playerStatuses != null && playerStatuses.TryGetValue(peer, out var st) &&
+            !string.IsNullOrEmpty(st.EndPoint))
             return st.EndPoint;
         return peer.EndPoint.ToString();
     }

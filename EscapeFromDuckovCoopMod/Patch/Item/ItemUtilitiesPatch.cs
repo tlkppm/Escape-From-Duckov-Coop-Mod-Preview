@@ -1,4 +1,4 @@
-// Escape-From-Duckov-Coop-Mod-Preview
+﻿// Escape-From-Duckov-Coop-Mod-Preview
 // Copyright (C) 2025  Mr.sans and InitLoader's team
 //
 // This program is not a free software.
@@ -153,9 +153,12 @@ internal static class Patch_ItemUtilities_AddAndMerge_LootPut
         if (m == null || !m.networkStarted || !m.IsServer) return;
         if (!__result || COOPManager.LootNet._serverApplyingLoot) return;
 
-        var isLootInv = LootboxDetectUtil.IsLootboxInventory(inventory) && !LootboxDetectUtil.IsPrivateInventory(inventory);
-        if (isLootInv)
-            COOPManager.LootNet.Server_SendLootboxState(null, inventory);
+        DeferedRunner.EndOfFrame(() =>
+        {
+            var isLootInv = LootboxDetectUtil.IsLootboxInventory(inventory) && !LootboxDetectUtil.IsPrivateInventory(inventory);
+            if (isLootInv)
+                COOPManager.LootNet.Server_SendLootboxState(null, inventory);
+        });
     }
 }
 

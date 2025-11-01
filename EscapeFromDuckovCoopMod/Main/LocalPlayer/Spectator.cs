@@ -84,7 +84,7 @@ namespace EscapeFromDuckovCoopMod
 
             string mySceneId = localPlayerStatus != null ? localPlayerStatus.SceneId : null;
             if (string.IsNullOrEmpty(mySceneId))
-                LoaclPlayerManager.Instance.ComputeIsInGame(out mySceneId);
+                LocalPlayerManager.Instance.ComputeIsInGame(out mySceneId);
             var myK = CanonicalizeSceneId(mySceneId);
 
             int cand = 0, kept = 0;
@@ -95,7 +95,7 @@ namespace EscapeFromDuckovCoopMod
                 {
                     var go = kv.Value;
                     var cmc = go ? go.GetComponent<CharacterMainControl>() : null;
-                    if (!LoaclPlayerManager.Instance.IsAlive(cmc) || cmc == exclude) continue;
+                    if (!LocalPlayerManager.Instance.IsAlive(cmc) || cmc == exclude) continue;
                     cand++;
 
                     string peerScene = null;
@@ -115,7 +115,7 @@ namespace EscapeFromDuckovCoopMod
                 {
                     var go = kv.Value;
                     var cmc = go ? go.GetComponent<CharacterMainControl>() : null;
-                    if (!LoaclPlayerManager.Instance.IsAlive(cmc) || cmc == exclude) continue;
+                    if (!LocalPlayerManager.Instance.IsAlive(cmc) || cmc == exclude) continue;
                     cand++;
 
                     //  先从 clientPlayerStatuses 拿 SceneId

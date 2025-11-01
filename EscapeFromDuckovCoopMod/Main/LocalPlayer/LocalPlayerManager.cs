@@ -26,9 +26,9 @@ using UnityEngine;
 
 namespace EscapeFromDuckovCoopMod
 {
-    public class LoaclPlayerManager : MonoBehaviour
-    {
-        public static LoaclPlayerManager Instance;
+public class LocalPlayerManager : MonoBehaviour
+{
+    public static LocalPlayerManager Instance;
 
         private NetService Service => NetService.Instance;
         private bool IsServer => Service != null && Service.IsServer;
@@ -214,7 +214,7 @@ namespace EscapeFromDuckovCoopMod
                 SlotHash = (int)slotHash,
                 ItemId = itemId
             };
-            Send_LoaclPlayerStatus.Instance.SendWeaponUpdate(weaponData);
+            SendLocalPlayerStatus.Instance.SendWeaponUpdate(weaponData);
         }
 
         public void ModBehaviour_onSlotContentChanged(ItemStatsSystem.Items.Slot obj)
@@ -233,7 +233,7 @@ namespace EscapeFromDuckovCoopMod
             if (obj.Key == "Head") slotHash1 = 500;
 
             var equipmentData1 = new EquipmentSyncData { SlotHash = slotHash1, ItemId = itemId1 };
-            Send_LoaclPlayerStatus.Instance.SendEquipmentUpdate(equipmentData1);
+            SendLocalPlayerStatus.Instance.SendEquipmentUpdate(equipmentData1);
         }
 
         public void UpdatePlayerStatuses()
@@ -265,7 +265,7 @@ namespace EscapeFromDuckovCoopMod
 
 
                 if (!IsServer) Send_ClientStatus.Instance.SendClientStatusUpdate();
-                else Send_LoaclPlayerStatus.Instance.SendPlayerStatusUpdate();
+                else SendLocalPlayerStatus.Instance.SendPlayerStatusUpdate();
             }
             else if (currentIsInGame && levelManager != null && levelManager.MainCharacter != null)
             {

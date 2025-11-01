@@ -115,7 +115,7 @@ namespace EscapeFromDuckovCoopMod
             }
 
             // 只有真正进入地图（拿到 SceneId）才上报
-            if (!LoaclPlayerManager.Instance.ComputeIsInGame(out var sid) || string.IsNullOrEmpty(sid)) return;
+            if (!LocalPlayerManager.Instance.ComputeIsInGame(out var sid) || string.IsNullOrEmpty(sid)) return;
             if (_sceneReadySidSent == sid) return; // 去抖：本场景只发一次
 
             var lm = LevelManager.Instance;
@@ -267,7 +267,7 @@ namespace EscapeFromDuckovCoopMod
 
             // ===== 过滤：不同图 & 不在白名单，直接忽略 =====
             string mySceneId = null;
-            LoaclPlayerManager.Instance.ComputeIsInGame(out mySceneId);
+            LocalPlayerManager.Instance.ComputeIsInGame(out mySceneId);
             mySceneId = mySceneId ?? string.Empty;
 
             // A) 同图过滤（仅 v2 有 hostSceneId；v1 无法判断同图，用 B 兜底）
@@ -439,7 +439,7 @@ namespace EscapeFromDuckovCoopMod
                 allowLocalSceneLoad = false;
                 if (networkStarted)
                 {
-                    if (IsServer) Send_LoaclPlayerStatus.Instance.SendPlayerStatusUpdate();
+                    if (IsServer) SendLocalPlayerStatus.Instance.SendPlayerStatusUpdate();
                     else Send_ClientStatus.Instance.SendClientStatusUpdate();
                 }
             }
@@ -545,7 +545,7 @@ namespace EscapeFromDuckovCoopMod
 
             // 计算主机当前 SceneId
             string hostSceneId = null;
-            LoaclPlayerManager.Instance.ComputeIsInGame(out hostSceneId);
+            LocalPlayerManager.Instance.ComputeIsInGame(out hostSceneId);
             hostSceneId = hostSceneId ?? string.Empty;
 
             var w = new NetDataWriter();
@@ -707,6 +707,9 @@ namespace EscapeFromDuckovCoopMod
 
             //Client_ReportSelfHealth_IfReadyOnce();
             try { SceneLoader.LoadingComment = "主机已完成，正在进入…"; } catch { }
+            
+            // 场景切换完成后，尝试自动重连
+            TryAutoReconnect();
         }
 
         // 主机：自身初始化完成 → 开门；已举手的立即放行；之后若有迟到的 READY，也会单放行
@@ -768,9 +771,35 @@ namespace EscapeFromDuckovCoopMod
         }
 
 
+        /// <summary>
+        /// 场景切换后自动重连（仅客户端）
+        /// </summary>
+        public async void TryAutoReconnect()
+        {
+            if (IsServer || !NetService.Instance.hasSuccessfulConnection) return;
 
+            // 防抖机制：如果距离上次重连尝试不足10秒，跳过
+            var lastReconnectTimeField = NetService.Instance.GetType().GetField("lastReconnectTime", 
+                System.Reflection.BindingFlags.NonPublic | System.Reflection.BindingFlags.Instance);
+            var lastReconnectTimeObj = lastReconnectTimeField?.GetValue(NetService.Instance);
+            var lastReconnectTime = lastReconnectTimeObj != null ? (float)lastReconnectTimeObj : 0f;
+            
+            if (Time.realtimeSinceStartup - lastReconnectTime < 10f)
+            {
+                Debug.Log("[COOP] 重连冷却中，跳过自动重连");
+                return;
+            }
 
+            // 更新重连时间戳
+            lastReconnectTimeField?.SetValue(NetService.Instance, Time.realtimeSinceStartup);
 
+            Debug.Log($"[COOP] 尝试自动重连到 {NetService.Instance.cachedConnectedIP}:{NetService.Instance.cachedConnectedPort}");
 
+            // 等待一小段时间，确保场景稳定
+            await UniTask.Delay(1000);
+
+            // 调用重连
+            NetService.Instance.ConnectToHost(NetService.Instance.cachedConnectedIP, NetService.Instance.cachedConnectedPort);
+        }
     }
 }

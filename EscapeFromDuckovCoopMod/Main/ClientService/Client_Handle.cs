@@ -97,7 +97,7 @@ namespace EscapeFromDuckovCoopMod
 
             playerStatuses[endPoint] = st;
 
-            Send_LoaclPlayerStatus.Instance.SendPlayerStatusUpdate();
+            SendLocalPlayerStatus.Instance.SendPlayerStatusUpdate();
 
         }
 

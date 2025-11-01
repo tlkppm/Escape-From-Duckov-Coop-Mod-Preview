@@ -154,7 +154,7 @@ namespace EscapeFromDuckovCoopMod
         }
 
         public static bool TryGetProjectilePrefab(int weaponTypeId, out Projectile pfb)
-       => LoaclPlayerManager.Instance._projCacheByWeaponType.TryGetValue(weaponTypeId, out pfb);
+       => LocalPlayerManager.Instance._projCacheByWeaponType.TryGetValue(weaponTypeId, out pfb);
 
 
         public static void BroadcastReliable(NetDataWriter w)
@@ -286,7 +286,7 @@ namespace EscapeFromDuckovCoopMod
             HealthM.Instance.ForceSetHealth(h, _cliSelfHpMax, _cliSelfHpCur, ensureBar: true);
 
             // 若现在血量已到 0，补一次死亡事件（只在客户端本地）
-            LoaclPlayerManager.Instance.Client_EnsureSelfDeathEvent(h, cmc);
+            LocalPlayerManager.Instance.Client_EnsureSelfDeathEvent(h, cmc);
 
             _cliSelfHpPending = false;
         }
@@ -333,7 +333,7 @@ namespace EscapeFromDuckovCoopMod
 
             // 计算主机当前 SceneId（仅当真正处于关卡中）
             string hostSceneId = null;
-            LoaclPlayerManager.Instance.ComputeIsInGame(out hostSceneId); // 返回 false 也无所谓，hostSceneId 可能为 null/空
+            LocalPlayerManager.Instance.ComputeIsInGame(out hostSceneId); // 返回 false 也无所谓，hostSceneId 可能为 null/空
 
             // 主机自己
             var hostPid = NetService.Instance.GetPlayerId(null);

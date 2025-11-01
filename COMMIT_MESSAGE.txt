@@ -1,0 +1,190 @@
+feat: 新增STEAMP2P联机(混合/虚拟)
+
+## 主要功能
+
+### 2. 双P2P架构支持
+
+#### 虚拟网络P2P
+- 协议: Steam ISteamNetworking P2P API（旧版API，适合Socket劫持）
+- 虚拟IP段: 10.255.0.0/16
+- Socket劫持 + IP映射，对LiteNetLib透明
+- 数据流: LiteNetLib → Socket.SendTo() → Patch_Socket劫持 → SteamP2PManager → Steam P2P
+- 投票系统: netManager.SendToAll() 广播
+- 支持1MB+大包传输（LiteNetLib自动分片）
+
+#### 混合P2P
+- 协议: Steam ISteamNetworkingSockets API（新API）
+- Steam P2P直连 + Steam Datagram Relay中继
+- Fake NetPeer机制：为Steam连接创建虚拟NetPeer对象
+- EndPoint映射: SteamID → 127.0.0.1:动态端口
+- HybridNetworkService统一LAN和Steam P2P接口
+
+### 3. P2P架构组件
+
+#### Patch_Socket.cs (Socket劫持层)
+- Patch_Socket_SendTo: 拦截UDP发送，检测虚拟IP（10.255.x.x），重定向到Steam P2P
+- Patch_Socket_ReceiveFrom: 拦截UDP接收，从Steam P2P队列取包，伪装成UDP包
+- Patch_Socket_Available: 检查Steam P2P队列是否有数据
+- Patch_Socket_Poll: 支持SelectMode.SelectRead检测
+- Patch_Socket_Select: Socket.Select多路复用支持
+- 自动应用：Harmony.PatchAll()
+
+#### SteamEndPointMapper.cs (虚拟IP映射器)
+- SteamID → 虚拟IP: 自动分配10.255.0.1、10.255.0.2...
+- 双向映射: _steamToEndPoint、_endPointToSteam字典
+- 端口固定: 9050
+- 不映射本地玩家SteamID
+- 注册时自动发送握手包建立P2P会话
+
+#### SteamP2PManager.cs (P2P数据包管理)
+- 发送: SteamNetworking.SendP2PPacket()
+- 接收: 使用ConcurrentQueue线程安全队列缓存
+- 流量统计: PacketsSent、BytesSent、PacketsReceived、BytesReceived
+- P2P会话管理: P2PSessionRequest_t、P2PSessionConnectFail_t回调
+- 启用Steam Datagram Relay: AllowP2PPacketRelay(true)
+- 数据包大小限制: 1432字节（UDP MTU），大包8192字节缓冲
+
+#### HybridNetworkService.cs (混合网络服务)
+- 统一LAN和Steam P2P接口
+- SendData()/BroadcastData()自动路由到正确的传输层
+- 支持NetworkMode.LAN和NetworkMode.SteamP2P切换
+- Fake NetPeer缓存管理（fakePeerCache）
+- Steam模式使用SteamNetworkTransport
+
+#### SteamNetworkTransport.cs (Steam传输层适配器)
+- 封装SteamNetworkingSocketsManager
+- SendToServer/SendToPeer/BroadcastToAll方法
+- DeliveryMethod映射（Unreliable/ReliableOrdered/Sequenced）
+- OnPeerConnectedEvent/OnPeerDisconnectedEvent/OnNetworkReceiveEvent事件
+
+#### SteamNetworkingSocketsManager.cs (ISteamNetworkingSockets API封装)
+- CreateListenSocket: P2P监听
+- ConnectP2PWithLobby: 连接Steam大厅
+- SendPacket/BroadcastPacket: 数据包发送
+- ReceiveMessages: 数据包接收轮询
+- Ping/Pong心跳机制
+- P2PSessionState查询
+
+#### SteamLobbyManager.cs (Steam大厅管理)
+- CreateLobby: 创建大厅（Public/FriendsOnly/Private）
+- JoinLobby: 加入大厅
+- LeaveLobby: 离开大厅
+- RequestLobbyList: 浏览公开大厅
+- InviteFriend: 邀请好友（ActivateGameOverlayInviteDialog）
+- 大厅元数据: mod_id、room_name、max_players、has_password、password_hash
+- 密码保护: SHA256哈希验证
+
+### 4. PacketSignature (数据包签名识别)
+- TryGetDeliveryMethod: 识别LiteNetLib数据包类型
+- 将LiteNetLib传输模式映射到Steam P2P发送模式
+
+映射关系:
+```
+LiteNetLib DeliveryMethod          Steam EP2PSend
+----------------------------------------
+Unreliable                   →    k_EP2PSendUnreliableNoDelay
+Sequenced                    →    k_EP2PSendUnreliableNoDelay
+ReliableOrdered              →    k_EP2PSendReliable
+ReliableUnordered            →    k_EP2PSendReliable
+ReliableSequenced            →    k_EP2PSendReliable
+```
+
+### 5. 虚拟通道策略
+- 通道0: Unreliable（位置、动画等高频数据）
+- 通道1: Reliable（装备、武器、场景事件）
+- 通道2: ReliableWithBuffering（大数据块、场景切换）
+- 通道3: UnreliableNoDelay（实时数据、射击事件）
+
+### 6. NAT穿透握手
+- SteamEndPointMapper.RegisterSteamID()时自动发送握手包
+- SteamNetworking.SendP2PPacket(steamID, handshake, EP2PSend.k_EP2PSendReliable)
+- P2PSessionRequest_t回调自动AcceptP2PSessionWithUser
+- P2PSessionConnectFail_t回调处理连接失败
+
+### 7. 特殊机制
+- VerifyRepository(): 每5分钟验证Git远程仓库
+- 官方仓库白名单: Mr-sans-and-InitLoader-s-team/Escape-From-Duckov-Coop-Mod-Preview
+- 混淆校验/算法（非官方仓库14%概率退出）
+- 版本标识防篡改: 修改标识文本会导致游戏退出
+- 反射读取BuildInfo避免硬编码
+
+### 8. 版本标识系统
+- 位置: 右上角（Screen.width - 410, 10）
+- 样式: 灰色半透明（0.7, 0.7, 0.7, 0.6）、字体11
+- 内容: "EscapeFromDuckovCoopMod v{版本}-{commit hash}"
+- 自动更新: UpdateGitHash.ps1每次编译运行
+- 防篡改: Application.Quit()
+
+### 9. 同步5个上游PR
+- PR#49: 场景切换自动重连
+- PR#48: 性能优化
+
+#### PR#51: 文档和依赖清理
+- 跳过（不适用虚拟P2P架构）
+
+### 10. 玩家列表功能
+- 虚拟网络模式: 不显示延迟（Steam内部管理RTT）
+- 混合模式: 显示Ping值
+- 颜色区分: 房主（黄色）、自己（青色）、其他玩家（绿色）
+- 显示: 玩家名称、SteamID（短格式）、在线状态
+- 房主权限: Kick/Block按钮
+- 过滤不兼容MOD版本: 检查mod_id元数据
+
+### 11. Steam大厅UI
+- 创建模式: 房间名、密码、可见性（Public/Friends/Private）、最大人数
+- 浏览模式: 大厅列表、密码保护图标、已满/游戏中状态、延迟显示
+- 房间内: 玩家列表、邀请好友、离开大厅
+- 密码保护: SHA256哈希存储在大厅元数据
+- 语言支持: zh-CN、en-US、ja-JP、ko-KR、pt-BR
+
+### 12. 命名规范
+- 公开成员: PascalCase
+- 私有成员: camelCase
+- 常量: UPPER_SNAKE_CASE
+- 事件: OnEventName
+- 回调: HandleEventName
+
+### 13. 网络同步优化
+- 位置去抖: 变化>0.01f（1cm）或方向>0.02f（约1度）才发送
+- 量化传输: NetPack.PutV3cm()压缩坐标
+- 帧率控制: syncInterval = 0.015f（约66Hz）
+- 场景同步: 投票机制、全员准备检查
+
+## 已知问题
+
+### 1. 虚拟网络P2P
+- 投票面板未同步
+- 房间名字异常（需检查SteamLobbyManager元数据设置）
+
+### 2. 混合P2P
+- 服务端正常，客户端有明显同步问题（Fake NetPeer EndPoint映射问题）
+- 投票面板未同步
+
+### 3. 依赖问题
+- 已更新.csproj引用: $(DUCKOV_GAME_MANAGED)\MonoMod.Backports.dll
+
+## 后续维护建议
+
+### 虚拟网络P2P维护
+- 监控SteamEndPointMapper虚拟IP池（最多65535个IP）
+- 定期清理_acceptedSessions中的过期会话
+- 优化receivedPackets队列大小（避免内存溢出）
+
+### 混合P2P维护
+- fakePeerCache定期清理已断开的Fake NetPeer
+- SteamNetworkingSocketsManager连接池管理
+- 心跳超时检测（pingTimeout = 30秒）
+- Pong响应检查
+
+### Socket劫持维护
+- Patch_Socket性能监控（_diagCount每1000包输出诊断）
+- P2PSessionState队列积压检查（>50KB警告）
+- DeliveryMethod映射准确性验证
+
+### 大厅系统维护
+- 密码哈希算法升级（当前SHA256）
+- 大厅元数据版本兼容性
+- RequestLobbyList过滤条件优化
+---
+
+

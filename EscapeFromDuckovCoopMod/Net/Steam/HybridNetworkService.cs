@@ -8,22 +8,43 @@ using UnityEngine;
 
 namespace EscapeFromDuckovCoopMod.Net.Steam
 {
+    /// <summary>
+    /// 网络模式枚举
+    /// </summary>
     public enum NetworkMode
     {
-        LAN,
-        SteamP2P
+        LAN,        // 局域网模式：使用UDP直连
+        SteamP2P    // Steam P2P模式：使用ISteamNetworkingSockets API
     }
 
+    /// <summary>
+    /// 混合网络服务 - 支持LAN和Steam P2P两种模式
+    /// 
+    /// 设计理念：
+    /// 1. 提供统一的网络抽象层，上层代码无需关心底层传输协议
+    /// 2. LAN模式使用LiteNetLib原生UDP传输
+    /// 3. Steam P2P模式使用ISteamNetworkingSockets（现代Steam API）
+    /// 
+    /// 关键组件：
+    /// - NetService: LiteNetLib的UDP网络管理器
+    /// - SteamNetworkTransport: Steam P2P传输层适配器
+    /// - Fake NetPeer: 为Steam连接创建虚拟NetPeer对象，让LiteNetLib以为在用UDP
+    /// 
+    /// 数据流向：
+    /// LAN模式:    游戏逻辑 -> LiteNetLib -> UDP Socket -> 对端UDP Socket -> LiteNetLib -> 游戏逻辑
+    /// Steam模式:  游戏逻辑 -> LiteNetLib -> Fake NetPeer -> SteamNetworkTransport -> Steam API -> 对端 Steam API -> 游戏逻辑
+    /// </summary>
     public class HybridNetworkService : MonoBehaviour
     {
         public static HybridNetworkService Instance { get; private set; }
 
-        private NetworkMode currentMode = NetworkMode.LAN;
-        private SteamNetworkTransport steamTransport;
-        private NetService lanService;
+        private NetworkMode currentMode = NetworkMode.LAN;  // 当前网络模式
+        private SteamNetworkTransport steamTransport;  // Steam P2P传输层
+        private NetService lanService;  // LAN UDP服务
 
-        private Dictionary<string, object> peerMap = new Dictionary<string, object>();
-        private Dictionary<string, NetPeer> fakePeerCache = new Dictionary<string, NetPeer>();
+        // NetPeer映射（用于在Steam模式下模拟LiteNetLib的Peer机制）
+        private Dictionary<string, object> peerMap = new Dictionary<string, object>();  // SteamID -> HSteamNetConnection映射
+        private Dictionary<string, NetPeer> fakePeerCache = new Dictionary<string, NetPeer>();  // SteamID -> Fake NetPeer映射
 
         public NetworkMode CurrentMode => currentMode;
         public bool IsServer { get; private set; }

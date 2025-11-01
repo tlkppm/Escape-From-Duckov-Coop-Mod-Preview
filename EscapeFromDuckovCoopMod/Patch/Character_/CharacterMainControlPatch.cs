@@ -121,7 +121,7 @@ namespace EscapeFromDuckovCoopMod
             if (__instance != CharacterMainControl.Main) return;
 
             // ⭐ 已经上报过（= 主机已经/可以生成过尸体战利品），直接跳过，不再创建/同步
-            if (LoaclPlayerManager.Instance._cliCorpseTreeReported) return;
+            if (LocalPlayerManager.Instance._cliCorpseTreeReported) return;
 
             try
             {
@@ -129,10 +129,10 @@ namespace EscapeFromDuckovCoopMod
                 DeadLootSpawnContext.InOnDead = __instance;
 
                 // 首次上报整棵“尸体装备树”给主机（你已有的方法）
-                Send_LoaclPlayerStatus.Instance.Net_ReportPlayerDeadTree(__instance);
+                SendLocalPlayerStatus.Instance.Net_ReportPlayerDeadTree(__instance);
 
                 // ✅ 标记“本轮生命已经上报过尸体树”
-                LoaclPlayerManager.Instance._cliCorpseTreeReported = true;
+                LocalPlayerManager.Instance._cliCorpseTreeReported = true;
             }
             finally
             {

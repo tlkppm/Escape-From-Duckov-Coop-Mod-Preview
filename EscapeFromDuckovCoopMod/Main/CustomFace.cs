@@ -130,14 +130,14 @@ namespace EscapeFromDuckovCoopMod
 
                 // 3) 记住最近一次非空
                 if (!string.IsNullOrEmpty(json) && json != "{}")
-                    LoaclPlayerManager.Instance._lastGoodFaceJson = json;
+                    LocalPlayerManager.Instance._lastGoodFaceJson = json;
 
                 // 4) 返回永不为空（尽量用缓存兜底）
-                return (!string.IsNullOrEmpty(json) && json != "{}") ? json : (LoaclPlayerManager.Instance._lastGoodFaceJson ?? "");
+                return (!string.IsNullOrEmpty(json) && json != "{}") ? json : (LocalPlayerManager.Instance._lastGoodFaceJson ?? "");
             }
             catch
             {
-                return LoaclPlayerManager.Instance._lastGoodFaceJson ?? "";
+                return LocalPlayerManager.Instance._lastGoodFaceJson ?? "";
             }
         }
 

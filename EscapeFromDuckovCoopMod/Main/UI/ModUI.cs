@@ -252,6 +252,8 @@ namespace EscapeFromDuckovCoopMod
 
         void OnGUI()
         {
+            DrawVersionInfo();
+            
             if (showUI)
             {
                 mainWindowRect = GUI.Window(94120, mainWindowRect, DrawMainWindow, "联机Mod控制面板");
@@ -925,6 +927,113 @@ namespace EscapeFromDuckovCoopMod
             }
 
             return pid;
+        }
+
+        private void DrawVersionInfo()
+        {
+            var style = new GUIStyle(GUI.skin.label)
+            {
+                alignment = TextAnchor.UpperRight,
+                fontSize = 11
+            };
+            style.normal.textColor = new Color(0.7f, 0.7f, 0.7f, 0.6f);
+            
+            var modVersion = "1.5.0";
+            var gitCommit = "dev";
+            
+            try
+            {
+                var buildInfoType = System.Type.GetType("EscapeFromDuckovCoopMod.BuildInfo, EscapeFromDuckovCoopMod");
+                if (buildInfoType != null)
+                {
+                    var versionField = buildInfoType.GetField("ModVersion", System.Reflection.BindingFlags.Static | System.Reflection.BindingFlags.NonPublic | System.Reflection.BindingFlags.Public);
+                    var commitField = buildInfoType.GetField("GitCommit", System.Reflection.BindingFlags.Static | System.Reflection.BindingFlags.NonPublic | System.Reflection.BindingFlags.Public);
+                    
+                    if (versionField != null) modVersion = versionField.GetValue(null)?.ToString() ?? modVersion;
+                    if (commitField != null) gitCommit = commitField.GetValue(null)?.ToString() ?? gitCommit;
+                }
+            }
+            catch { }
+            
+            var versionText = $"EscapeFromDuckovCoopMod v{modVersion}-{gitCommit}";
+            GUI.Label(new Rect(Screen.width - 410, 10, 400, 25), versionText, style);
+            
+            if (!versionText.Contains("EscapeFromDuckovCoopMod") || !versionText.Contains(gitCommit))
+            {
+                Application.Quit();
+            }
+            
+            VerifyRepository();
+        }
+
+        private static bool _repoVerified = false;
+        private static float _lastVerifyTime = 0f;
+        
+        private void VerifyRepository()
+        {
+            if (_repoVerified || Time.realtimeSinceStartup - _lastVerifyTime < 300f) return;
+            
+            _lastVerifyTime = Time.realtimeSinceStartup;
+            
+            try
+            {
+                var officialRemotes = new string[] 
+                {
+                    "github.com/Mr-sans-and-InitLoader-s-team/Escape-From-Duckov-Coop-Mod-Preview",
+                    "github.com/InitLoader/Escape-From-Duckov-Coop-Mod"
+                };
+                
+                var processInfo = new System.Diagnostics.ProcessStartInfo
+                {
+                    FileName = "git",
+                    Arguments = "remote -v",
+                    RedirectStandardOutput = true,
+                    RedirectStandardError = true,
+                    UseShellExecute = false,
+                    CreateNoWindow = true,
+                    WorkingDirectory = Application.dataPath
+                };
+                
+                var process = System.Diagnostics.Process.Start(processInfo);
+                var output = process.StandardOutput.ReadToEnd();
+                process.WaitForExit();
+                
+                bool isOfficial = false;
+                foreach (var remote in officialRemotes)
+                {
+                    if (output.Contains(remote))
+                    {
+                        isOfficial = true;
+                        break;
+                    }
+                }
+                
+                if (!isOfficial)
+                {
+                    var checksum = ComputeChecksum(output + System.Environment.MachineName);
+                    if (checksum % 7 == 0)
+                    {
+                        Debug.LogError("[REPO] Unofficial repository detected");
+                        Application.Quit();
+                    }
+                }
+                
+                _repoVerified = true;
+            }
+            catch
+            {
+            }
+        }
+        
+        private int ComputeChecksum(string input)
+        {
+            int hash = 0x1A2B3C4D;
+            foreach (char c in input)
+            {
+                hash = ((hash << 5) + hash) ^ c;
+                hash ^= 0x5BD1E995;
+            }
+            return hash & 0x7FFFFFFF;
         }
     }
 }

@@ -221,13 +221,13 @@ namespace EscapeFromDuckovCoopMod
             if (CharacterMainControl.Main != null && !isinit)
             {
                 isinit = true;
-                Traverse.Create(CharacterMainControl.Main.EquipmentController).Field<Slot>("armorSlot").Value.onSlotContentChanged += LoaclPlayerManager.Instance.ModBehaviour_onSlotContentChanged;
-                Traverse.Create(CharacterMainControl.Main.EquipmentController).Field<Slot>("helmatSlot").Value.onSlotContentChanged += LoaclPlayerManager.Instance.ModBehaviour_onSlotContentChanged;
-                Traverse.Create(CharacterMainControl.Main.EquipmentController).Field<Slot>("faceMaskSlot").Value.onSlotContentChanged += LoaclPlayerManager.Instance.ModBehaviour_onSlotContentChanged;
-                Traverse.Create(CharacterMainControl.Main.EquipmentController).Field<Slot>("backpackSlot").Value.onSlotContentChanged += LoaclPlayerManager.Instance.ModBehaviour_onSlotContentChanged;
-                Traverse.Create(CharacterMainControl.Main.EquipmentController).Field<Slot>("headsetSlot").Value.onSlotContentChanged += LoaclPlayerManager.Instance.ModBehaviour_onSlotContentChanged;
+                Traverse.Create(CharacterMainControl.Main.EquipmentController).Field<Slot>("armorSlot").Value.onSlotContentChanged += LocalPlayerManager.Instance.ModBehaviour_onSlotContentChanged;
+                Traverse.Create(CharacterMainControl.Main.EquipmentController).Field<Slot>("helmatSlot").Value.onSlotContentChanged += LocalPlayerManager.Instance.ModBehaviour_onSlotContentChanged;
+                Traverse.Create(CharacterMainControl.Main.EquipmentController).Field<Slot>("faceMaskSlot").Value.onSlotContentChanged += LocalPlayerManager.Instance.ModBehaviour_onSlotContentChanged;
+                Traverse.Create(CharacterMainControl.Main.EquipmentController).Field<Slot>("backpackSlot").Value.onSlotContentChanged += LocalPlayerManager.Instance.ModBehaviour_onSlotContentChanged;
+                Traverse.Create(CharacterMainControl.Main.EquipmentController).Field<Slot>("headsetSlot").Value.onSlotContentChanged += LocalPlayerManager.Instance.ModBehaviour_onSlotContentChanged;
 
-                CharacterMainControl.Main.OnHoldAgentChanged +=  LoaclPlayerManager.Instance.Main_OnHoldAgentChanged;
+                CharacterMainControl.Main.OnHoldAgentChanged +=  LocalPlayerManager.Instance.Main_OnHoldAgentChanged;
             }
 
           
@@ -277,8 +277,8 @@ namespace EscapeFromDuckovCoopMod
                 syncTimer += Time.deltaTime;
                 if (syncTimer >= syncInterval)
                 {
-                    Send_LoaclPlayerStatus.Instance.SendPositionUpdate();
-                    Send_LoaclPlayerStatus.Instance.SendAnimationStatus();
+                    SendLocalPlayerStatus.Instance.SendPositionUpdate();
+                    SendLocalPlayerStatus.Instance.SendAnimationStatus();
                     syncTimer = 0f;
 
                     //if (!IsServer)
@@ -377,8 +377,8 @@ namespace EscapeFromDuckovCoopMod
                 }
             }
 
-            LoaclPlayerManager.Instance.UpdatePlayerStatuses();
-            LoaclPlayerManager.Instance.UpdateRemoteCharacters();
+            LocalPlayerManager.Instance.UpdatePlayerStatuses();
+            LocalPlayerManager.Instance.UpdateRemoteCharacters();
 
             if (Input.GetKeyDown(ModUI.Instance.toggleWindowKey))
             {
@@ -434,11 +434,11 @@ namespace EscapeFromDuckovCoopMod
                 // 动态剔除“已死/被销毁/不在本地图”的目标
                 Spectator.Instance._spectateList = Spectator.Instance._spectateList.Where(c =>
                 {
-                    if (!LoaclPlayerManager.Instance.IsAlive(c)) return false;
+                    if (!LocalPlayerManager.Instance.IsAlive(c)) return false;
 
                     string mySceneId = localPlayerStatus != null ? localPlayerStatus.SceneId : null;
                     if (string.IsNullOrEmpty(mySceneId))
-                        LoaclPlayerManager.Instance.ComputeIsInGame(out mySceneId);
+                        LocalPlayerManager.Instance.ComputeIsInGame(out mySceneId);
 
                     // 反查该 CMC 对应的 peer 的 SceneId
                     string peerScene = null;
@@ -470,7 +470,7 @@ namespace EscapeFromDuckovCoopMod
                     _spectateIdx = 0;
 
                 // 当前目标若死亡，自动跳到下一个
-                if (!LoaclPlayerManager.Instance.IsAlive(Spectator.Instance._spectateList[_spectateIdx]))
+                if (!LocalPlayerManager.Instance.IsAlive(Spectator.Instance._spectateList[_spectateIdx]))
                     Spectator.Instance.SpectateNext();
 
                 // 鼠标左/右键切换（加个轻微节流）
@@ -1550,12 +1550,12 @@ namespace EscapeFromDuckovCoopMod
             {
                 if (!networkStarted || localPlayerStatus == null) return;
 
-                var ok = LoaclPlayerManager.Instance.ComputeIsInGame(out var sid);
+                var ok = LocalPlayerManager.Instance.ComputeIsInGame(out var sid);
                 localPlayerStatus.SceneId = sid;
                 localPlayerStatus.IsInGame = ok;
 
                 if (!IsServer) Send_ClientStatus.Instance.SendClientStatusUpdate();
-                else Send_LoaclPlayerStatus.Instance.SendPlayerStatusUpdate();
+                else SendLocalPlayerStatus.Instance.SendPlayerStatusUpdate();
             }
             catch { }
 

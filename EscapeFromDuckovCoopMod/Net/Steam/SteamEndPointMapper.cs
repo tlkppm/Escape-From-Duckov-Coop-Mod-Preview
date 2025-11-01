@@ -10,16 +10,43 @@ using UnityEngine;
 
 namespace EscapeFromDuckovCoopMod.Net.Steam
 {
+    /// <summary>
+    /// Steam EndPoint映射器 - 虚拟网络IP管理核心
+    /// 
+    /// 设计目标：
+    /// 让Steam P2P对LiteNetLib完全透明，让LiteNetLib以为在用标准UDP网络
+    /// 
+    /// 工作原理：
+    /// 1. 为每个Steam玩家分配一个虚拟IP地址（10.255.x.x）
+    /// 2. LiteNetLib使用虚拟IP作为EndPoint进行通信
+    /// 3. 本类负责双向映射：SteamID <-> 虚拟IP EndPoint
+    /// 4. 当LiteNetLib要发包时，将虚拟IP转换回SteamID，通过Steam API发送
+    /// 
+    /// 虚拟IP分配规则：
+    /// - 网段：10.255.0.0/16（私有IP范围，不会与真实网络冲突）
+    /// - 起始：10.255.0.1
+    /// - 递增：每个新SteamID自动分配下一个可用IP
+    /// 
+    /// 关键映射：
+    /// SteamID 76561198827560045 <-> 10.255.0.1:9050
+    /// SteamID 76561198827560046 <-> 10.255.0.2:9050
+    /// 
+    /// 注意事项：
+    /// - 虚拟IP仅在当前会话有效，重启后重新分配
+    /// - 不注册本地玩家的SteamID，因为本地玩家用真实的localhost
+    /// </summary>
     public class SteamEndPointMapper : MonoBehaviour
     {
         public static SteamEndPointMapper Instance { get; private set; }
         
-        private Dictionary<CSteamID, IPEndPoint> _steamToEndPoint = new Dictionary<CSteamID, IPEndPoint>();
-        private Dictionary<IPEndPoint, CSteamID> _endPointToSteam = new Dictionary<IPEndPoint, CSteamID>();
-        private int _virtualIpCounter = 1;
+        // 双向映射表
+        private Dictionary<CSteamID, IPEndPoint> _steamToEndPoint = new Dictionary<CSteamID, IPEndPoint>();  // SteamID -> 虚拟IP映射
+        private Dictionary<IPEndPoint, CSteamID> _endPointToSteam = new Dictionary<IPEndPoint, CSteamID>();  // 虚拟IP -> SteamID反向映射
+        private int _virtualIpCounter = 1;  // 虚拟IP计数器，从1开始递增
         
-        private const byte VirtualIpPrefix1 = 10;
-        private const byte VirtualIpPrefix2 = 255;
+        // 虚拟IP网段：10.255.x.x
+        private const byte VirtualIpPrefix1 = 10;   // 第一字节
+        private const byte VirtualIpPrefix2 = 255;  // 第二字节
         
         private void Awake()
         {

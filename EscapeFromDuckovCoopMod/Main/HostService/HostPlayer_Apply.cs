@@ -190,7 +190,7 @@ namespace EscapeFromDuckovCoopMod
 
                             if (playerStatuses.TryGetValue(endPoint, out var ps) && ps != null && !string.IsNullOrEmpty(ps.EndPoint) && gun)
                             {
-                                LoaclPlayerManager.Instance._gunCacheByShooter[ps.EndPoint] = (gun, mz);
+                                LocalPlayerManager.Instance._gunCacheByShooter[ps.EndPoint] = (gun, mz);
                             }
                         }
                         catch { }
@@ -200,8 +200,8 @@ namespace EscapeFromDuckovCoopMod
                         var pfb = (gunSetting && gunSetting.bulletPfb)
                                 ? gunSetting.bulletPfb
                                 : Duckov.Utilities.GameplayDataSettings.Prefabs.DefaultBullet;
-                        LoaclPlayerManager.Instance._projCacheByWeaponType[typeId] = pfb;
-                        LoaclPlayerManager.Instance._muzzleFxCacheByWeaponType[typeId] = gunSetting ? gunSetting.muzzleFxPfb : null;
+                        LocalPlayerManager.Instance._projCacheByWeaponType[typeId] = pfb;
+                        LocalPlayerManager.Instance._muzzleFxCacheByWeaponType[typeId] = gunSetting ? gunSetting.muzzleFxPfb : null;
                     }
                 }
                 else

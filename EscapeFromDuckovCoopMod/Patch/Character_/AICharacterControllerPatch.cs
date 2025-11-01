@@ -126,7 +126,7 @@ namespace EscapeFromDuckovCoopMod
                 if (!cmc.gameObject.activeInHierarchy) return;
                 if (cmc.gameObject.scene != scene) return;
                 if (cmc.Team == ai.Team) return;
-                if (!LoaclPlayerManager.Instance.IsAlive(cmc)) return;
+                if (!LocalPlayerManager.Instance.IsAlive(cmc)) return;
 
                 float d2 = (cmc.transform.position - aiPos).sqrMagnitude;
                 if (d2 < bestD2) { bestD2 = d2; best = cmc; }

@@ -53,8 +53,8 @@ namespace EscapeFromDuckovCoopMod
             }
 
             localPlayerStatus.CustomFaceJson = CustomFace.LoadLocalCustomFaceJson();
-            var equipmentList = LoaclPlayerManager.Instance.GetLocalEquipment();
-            var weaponList = LoaclPlayerManager.Instance.GetLocalWeapons();
+            var equipmentList = LocalPlayerManager.Instance.GetLocalEquipment();
+            var weaponList = LocalPlayerManager.Instance.GetLocalWeapons();
 
             writer.Reset();
             writer.Put((byte)Op.CLIENT_STATUS_UPDATE);     // opcode

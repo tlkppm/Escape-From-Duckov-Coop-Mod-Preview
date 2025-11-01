@@ -51,6 +51,19 @@ namespace EscapeFromDuckovCoopMod
 
         public readonly HashSet<int> _dedupeShotFrame = new HashSet<int>(); // 本帧已发过的标记
 
+        // ===== 场景切换重连功能 =====
+        // 缓存成功连接的IP和端口，用于场景切换后自动重连
+        public string cachedConnectedIP = "";
+        public int cachedConnectedPort = 0;
+        public bool hasSuccessfulConnection = false;
+        
+        // 重连防抖机制 - 防止重连触发过于频繁
+        private float lastReconnectTime = 0f;
+        private const float RECONNECT_COOLDOWN = 10f; // 10秒冷却时间
+        
+        // 连接类型标记 - 区分手动连接和自动重连
+        private bool isManualConnection = false; // true: 手动连接(UI点击), false: 自动重连
+
         //本地玩家状态
         public PlayerStatus localPlayerStatus;
 
@@ -76,6 +89,21 @@ namespace EscapeFromDuckovCoopMod
             {
                 status = "已连接到 " + peer.EndPoint;
                 isConnecting = false;
+                
+                // 只有手动连接成功才更新缓存
+                if (isManualConnection)
+                {
+                    cachedConnectedIP = peer.EndPoint.Address.ToString();
+                    cachedConnectedPort = peer.EndPoint.Port;
+                    hasSuccessfulConnection = true;
+                    Debug.Log($"[COOP] 手动连接成功，缓存连接信息: {cachedConnectedIP}:{cachedConnectedPort}");
+                    isManualConnection = false; // 重置标记
+                }
+                else
+                {
+                    Debug.Log($"[COOP] 自动重连成功，不更新缓存: {peer.EndPoint.Address}:{peer.EndPoint.Port}");
+                }
+                
                 Send_ClientStatus.Instance.SendClientStatusUpdate();
             }
 
@@ -94,7 +122,7 @@ namespace EscapeFromDuckovCoopMod
                 };
             }
 
-            if (IsServer) Send_LoaclPlayerStatus.Instance.SendPlayerStatusUpdate();
+            if (IsServer) SendLocalPlayerStatus.Instance.SendPlayerStatusUpdate();
 
             if (IsServer)
             {
@@ -136,6 +164,8 @@ namespace EscapeFromDuckovCoopMod
 
         public void OnPeerDisconnected(NetPeer peer, DisconnectInfo disconnectInfo)
         {
+            if (peer == null) return;
+            
             Debug.Log("断开连接: " + peer.EndPoint + ", 原因: " + disconnectInfo.Reason);
             string endPoint = peer.EndPoint.ToString();
             
@@ -143,6 +173,23 @@ namespace EscapeFromDuckovCoopMod
             {
                 status = "连接断开";
                 isConnecting = false;
+                
+                // 只有在手动断开连接时才清除缓存，自动重连失败时保留缓存
+                if (isManualConnection && (disconnectInfo.Reason == DisconnectReason.DisconnectPeerCalled || 
+                    disconnectInfo.Reason == DisconnectReason.RemoteConnectionClose))
+                {
+                    hasSuccessfulConnection = false;
+                    cachedConnectedIP = "";
+                    cachedConnectedPort = 0;
+                    Debug.Log("[COOP] 手动断开连接，清除缓存的连接信息");
+                }
+                else
+                {
+                    Debug.Log($"[COOP] 连接断开 ({disconnectInfo.Reason})，保留缓存的连接信息用于重连");
+                }
+                
+                // 重置手动连接标记
+                isManualConnection = false;
             }
             if (connectedPeer == peer) connectedPeer = null;
 
@@ -234,7 +281,7 @@ namespace EscapeFromDuckovCoopMod
             clientPlayerStatuses.Clear();
             clientRemoteCharacters.Clear();
 
-            LoaclPlayerManager.Instance.InitializeLocalPlayer();
+            LocalPlayerManager.Instance.InitializeLocalPlayer();
             if (IsServer)
             {
                 ItemAgent_Gun.OnMainCharacterShootEvent -= COOPManager.WeaponHandle.Host_OnMainCharacterShoot;
@@ -285,7 +332,7 @@ namespace EscapeFromDuckovCoopMod
             clientPlayerStatuses.Clear();
             clientRemoteCharacters.Clear();
 
-            LoaclPlayerManager.Instance.InitializeLocalPlayer();
+            LocalPlayerManager.Instance.InitializeLocalPlayer();
             if (IsServer)
             {
                 ItemAgent_Gun.OnMainCharacterShootEvent -= COOPManager.WeaponHandle.Host_OnMainCharacterShoot;
@@ -321,6 +368,9 @@ namespace EscapeFromDuckovCoopMod
 
         public void ConnectToHost(string ip, int port)
         {
+            // 标记为手动连接（从UI调用）
+            isManualConnection = true;
+            
             // 基础校验
             if (string.IsNullOrWhiteSpace(ip))
             {

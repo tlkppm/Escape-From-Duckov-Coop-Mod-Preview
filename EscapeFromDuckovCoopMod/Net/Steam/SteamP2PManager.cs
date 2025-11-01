@@ -10,19 +10,37 @@ using UnityEngine;
 
 namespace EscapeFromDuckovCoopMod.Net.Steam
 {
+    /// <summary>
+    /// Steam P2P数据包管理器
+    /// 
+    /// 核心职责：
+    /// 1. 处理Steam P2P底层数据包的发送和接收
+    /// 2. 管理P2P会话连接请求和故障回调
+    /// 3. 提供数据包队列缓冲，防止丢包
+    /// 4. 统计网络流量和性能指标
+    /// 
+    /// 技术要点：
+    /// - 使用ISteamNetworking P2P API（旧版API，但适合虚拟网络映射）
+    /// - 支持Steam Datagram Relay (SDR) 中继服务器用于NAT穿透
+    /// - 数据包最大1432字节（UDP MTU限制），大包使用8192字节缓冲
+    /// - 使用ConcurrentQueue线程安全队列缓存收到的数据包
+    /// </summary>
     public class SteamP2PManager : MonoBehaviour
     {
         public static SteamP2PManager Instance { get; private set; }
         
-        private Callback<P2PSessionRequest_t> _p2pSessionRequestCallback;
-        private Callback<P2PSessionConnectFail_t> _p2pSessionConnectFailCallback;
+        // Steam P2P回调
+        private Callback<P2PSessionRequest_t> _p2pSessionRequestCallback;  // P2P会话请求回调
+        private Callback<P2PSessionConnectFail_t> _p2pSessionConnectFailCallback;  // P2P连接失败回调
         
-        private byte[] _receiveBuffer = new byte[1432];
-        private byte[] _largeReceiveBuffer = new byte[8192];
-        private ConcurrentQueue<ReceivedPacket> _receivedPackets = new ConcurrentQueue<ReceivedPacket>();
+        // 接收缓冲区（UDP MTU限制）
+        private byte[] _receiveBuffer = new byte[1432];  // 标准UDP数据包大小
+        private byte[] _largeReceiveBuffer = new byte[8192];  // 大数据包缓冲
+        private ConcurrentQueue<ReceivedPacket> _receivedPackets = new ConcurrentQueue<ReceivedPacket>();  // 线程安全的接收队列
         
-        private const int MAX_QUEUE_SIZE = 512;
-        private const int BATCH_PROCESS_LIMIT = 512;
+        // 队列限制（防止内存溢出）
+        private const int MAX_QUEUE_SIZE = 512;  // 队列最大容量
+        private const int BATCH_PROCESS_LIMIT = 512;  // 每帧最多处理的数据包数
         
         private int _packetsSent;
         private int _packetsReceived;

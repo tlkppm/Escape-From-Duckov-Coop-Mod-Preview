@@ -146,7 +146,7 @@ namespace EscapeFromDuckovCoopMod
                 Transform muzzleTf = null;
                 if (!string.IsNullOrEmpty(shooterId))
                 {
-                    if (LoaclPlayerManager.Instance._gunCacheByShooter.TryGetValue(shooterId, out var cached) && cached.gun)
+                    if (LocalPlayerManager.Instance._gunCacheByShooter.TryGetValue(shooterId, out var cached) && cached.gun)
                     {
                         gun = cached.gun;
                         muzzleTf = cached.muzzle;
@@ -171,7 +171,7 @@ namespace EscapeFromDuckovCoopMod
 
                     if (!string.IsNullOrEmpty(shooterId) && gun)
                     {
-                        LoaclPlayerManager.Instance._gunCacheByShooter[shooterId] = (gun, muzzleTf);
+                        LocalPlayerManager.Instance._gunCacheByShooter[shooterId] = (gun, muzzleTf);
                     }
                 }
 
@@ -256,7 +256,7 @@ namespace EscapeFromDuckovCoopMod
             GameObject ResolveMuzzlePrefab()
             {
                 GameObject fxPfb = null;
-                LoaclPlayerManager.Instance._muzzleFxCacheByWeaponType.TryGetValue(weaponType, out fxPfb);
+                LocalPlayerManager.Instance._muzzleFxCacheByWeaponType.TryGetValue(weaponType, out fxPfb);
                 if (!fxPfb && gun && gun.GunItemSetting) fxPfb = gun.GunItemSetting.muzzleFxPfb;
                 if (!fxPfb) fxPfb = defaultMuzzleFx;
                 return fxPfb;

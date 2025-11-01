@@ -14,43 +14,36 @@
 // MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
 // GNU Affero General Public License for more details.
 
-﻿using ItemStatsSystem;
-using System;
-using System.Collections.Generic;
-using System.Linq;
-using System.Text;
-using System.Threading.Tasks;
-using UnityEngine;
+using ItemStatsSystem;
 
-namespace EscapeFromDuckovCoopMod
+namespace EscapeFromDuckovCoopMod;
+
+public class NetDropTag : MonoBehaviour
 {
-    public class NetDropTag : MonoBehaviour
+    public uint id;
+
+
+    private void Awake()
     {
-        public uint id;
-
-
-        void Awake()
-        {
-          //😆
-            
-        }
-
-        static void AddNetDropTag(UnityEngine.GameObject go, uint id)
-        {
-            if (!go) return;
-            var tag = go.GetComponent<NetDropTag>() ?? go.AddComponent<NetDropTag>();
-            tag.id = id;
-        }
-        static void AddNetDropTag(Item item, uint id)
-        {
-            try
-            {
-                var ag = item?.ActiveAgent;
-                if (ag && ag.gameObject) AddNetDropTag(ag.gameObject, id);
-            }
-            catch { }
-        }
-
+        //😆
     }
 
+    private static void AddNetDropTag(GameObject go, uint id)
+    {
+        if (!go) return;
+        var tag = go.GetComponent<NetDropTag>() ?? go.AddComponent<NetDropTag>();
+        tag.id = id;
+    }
+
+    private static void AddNetDropTag(Item item, uint id)
+    {
+        try
+        {
+            var ag = item?.ActiveAgent;
+            if (ag && ag.gameObject) AddNetDropTag(ag.gameObject, id);
+        }
+        catch
+        {
+        }
+    }
 }

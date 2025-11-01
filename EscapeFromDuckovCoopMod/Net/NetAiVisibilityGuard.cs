@@ -14,43 +14,42 @@
 // MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
 // GNU Affero General Public License for more details.
 
-﻿using System;
-using System.Collections.Generic;
-using System.Linq;
-using System.Text;
-using System.Threading.Tasks;
-using UnityEngine;
+namespace EscapeFromDuckovCoopMod;
 
-namespace EscapeFromDuckovCoopMod
+public sealed class NetAiVisibilityGuard : MonoBehaviour
 {
+    private bool _inited;
+    private Light[] _lights;
+    private ParticleSystem[] _particles;
+    private Renderer[] _renderers;
 
-    public sealed class NetAiVisibilityGuard : MonoBehaviour
+    private void EnsureCache()
     {
-        Renderer[] _renderers;
-        Light[] _lights;
-        ParticleSystem[] _particles;
-        bool _inited;
+        if (_inited) return;
+        _renderers = GetComponentsInChildren<Renderer>(true);
+        _lights = GetComponentsInChildren<Light>(true);
+        _particles = GetComponentsInChildren<ParticleSystem>(true);
+        _inited = true;
+    }
 
-        void EnsureCache()
-        {
-            if (_inited) return;
-            _renderers = GetComponentsInChildren<Renderer>(true);
-            _lights = GetComponentsInChildren<Light>(true);
-            _particles = GetComponentsInChildren<ParticleSystem>(true);
-            _inited = true;
-        }
-
-        public void SetVisible(bool v)
-        {
-            EnsureCache();
-            if (_renderers != null) foreach (var r in _renderers) if (r) r.enabled = v;
-            if (_lights != null) foreach (var l in _lights) if (l) l.enabled = v;
-            if (_particles != null) foreach (var ps in _particles)
-                {
-                    if (!ps) continue;
-                    var em = ps.emission; em.enabled = v;
-                }
-           //这些可能是无意义的开关hhhhhh
-        }
+    public void SetVisible(bool v)
+    {
+        EnsureCache();
+        if (_renderers != null)
+            foreach (var r in _renderers)
+                if (r)
+                    r.enabled = v;
+        if (_lights != null)
+            foreach (var l in _lights)
+                if (l)
+                    l.enabled = v;
+        if (_particles != null)
+            foreach (var ps in _particles)
+            {
+                if (!ps) continue;
+                var em = ps.emission;
+                em.enabled = v;
+            }
+        //这些可能是无意义的开关hhhhhh
     }
 }

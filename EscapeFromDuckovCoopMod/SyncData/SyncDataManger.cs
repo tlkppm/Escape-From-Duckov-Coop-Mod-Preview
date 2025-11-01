@@ -14,59 +14,50 @@
 // MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
 // GNU Affero General Public License for more details.
 
-﻿using LiteNetLib;
-using LiteNetLib.Utils;
-using System;
-using System.Collections.Generic;
-using System.Linq;
-using System.Text;
-using System.Threading.Tasks;
+namespace EscapeFromDuckovCoopMod;
 
-namespace EscapeFromDuckovCoopMod
+public class EquipmentSyncData
 {
-    public class EquipmentSyncData
+    public string ItemId;
+    public int SlotHash;
+
+    public void Serialize(NetDataWriter writer)
     {
-        public int SlotHash;
-        public string ItemId;
-
-        public void Serialize(NetDataWriter writer)
-        {
-            writer.Put(SlotHash);
-            writer.Put(ItemId ?? "");
-        }
-
-        public static EquipmentSyncData Deserialize(NetPacketReader reader)
-        {
-            return new EquipmentSyncData
-            {
-                SlotHash = reader.GetInt(),
-                ItemId = reader.GetString()
-            };
-        }
+        writer.Put(SlotHash);
+        writer.Put(ItemId ?? "");
     }
 
-    public class WeaponSyncData
+    public static EquipmentSyncData Deserialize(NetPacketReader reader)
     {
-        public int SlotHash;
-        public string ItemId;
-
-        public void Serialize(NetDataWriter writer)
+        return new EquipmentSyncData
         {
-            writer.Put(SlotHash);
-            writer.Put(ItemId ?? "");
-        }
-
-        public static WeaponSyncData Deserialize(NetPacketReader reader)
-        {
-            return new WeaponSyncData
-            {
-                SlotHash = reader.GetInt(),
-                ItemId = reader.GetString()
-            };
-        }
+            SlotHash = reader.GetInt(),
+            ItemId = reader.GetString()
+        };
     }
-    public static class SyncDataManger
+}
+
+public class WeaponSyncData
+{
+    public string ItemId;
+    public int SlotHash;
+
+    public void Serialize(NetDataWriter writer)
     {
-
+        writer.Put(SlotHash);
+        writer.Put(ItemId ?? "");
     }
+
+    public static WeaponSyncData Deserialize(NetPacketReader reader)
+    {
+        return new WeaponSyncData
+        {
+            SlotHash = reader.GetInt(),
+            ItemId = reader.GetString()
+        };
+    }
+}
+
+public static class SyncDataManger
+{
 }

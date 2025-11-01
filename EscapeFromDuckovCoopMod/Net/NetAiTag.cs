@@ -14,41 +14,37 @@
 // MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
 // GNU Affero General Public License for more details.
 
-﻿using System;
-using System.Collections.Generic;
-using System.Linq;
-using System.Text;
-using System.Threading.Tasks;
-using UnityEngine;
+namespace EscapeFromDuckovCoopMod;
 
-namespace EscapeFromDuckovCoopMod
+public sealed class NetAiTag : MonoBehaviour
 {
-    public sealed class NetAiTag : MonoBehaviour
+    public int aiId;
+    public string nameOverride; // 主机下发的显示名（纯文本
+    public int? iconTypeOverride; // 来自主机的 CharacterIconTypes（int）
+    public bool? showNameOverride; // 主机裁决是否显示名字
+
+    private void Awake()
     {
-        public int aiId;
-        public int? iconTypeOverride;   // 来自主机的 CharacterIconTypes（int）
-        public bool? showNameOverride;  // 主机裁决是否显示名字
-        public string nameOverride;     // 主机下发的显示名（纯文本
-
-        void Awake() { Guard(); }
-        void OnEnable() { Guard(); }
-
-        void Guard()
-        {
-            try
-            {
-                var cmc = GetComponent<CharacterMainControl>();
-                var mod = ModBehaviourF.Instance;
-                if (!cmc || mod == null) return;
-
-                if (!AITool.IsRealAI(cmc))
-                {
-                    Destroy(this);
-                }
-            }
-            catch { }
-        }
+        Guard();
     }
 
+    private void OnEnable()
+    {
+        Guard();
+    }
 
+    private void Guard()
+    {
+        try
+        {
+            var cmc = GetComponent<CharacterMainControl>();
+            var mod = ModBehaviourF.Instance;
+            if (!cmc || mod == null) return;
+
+            if (!AITool.IsRealAI(cmc)) Destroy(this);
+        }
+        catch
+        {
+        }
+    }
 }

@@ -14,71 +14,56 @@
 // MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
 // GNU Affero General Public License for more details.
 
-﻿using Cysharp.Threading.Tasks;
 using Duckov.UI;
-using HarmonyLib;
-using System;
-using System.Collections.Generic;
-using System.Linq;
-using System.Text;
-using System.Threading.Tasks;
-using UnityEngine;
 using UnityEngine.EventSystems;
 
-namespace EscapeFromDuckovCoopMod
+namespace EscapeFromDuckovCoopMod;
+
+[HarmonyPatch(typeof(LevelManager), "StartInit")]
+internal static class Patch_Level_StartInit_Gate
 {
-    [HarmonyPatch(typeof(LevelManager), "StartInit")]
-    static class Patch_Level_StartInit_Gate
+    private static bool Prefix(LevelManager __instance, SceneLoadingContext context)
     {
-        static bool Prefix(LevelManager __instance, SceneLoadingContext context)
-        {
-            var mod = ModBehaviourF.Instance;
-            if (mod == null) return true;
-            if (mod.IsServer) return true;
+        var mod = ModBehaviourF.Instance;
+        if (mod == null) return true;
+        if (mod.IsServer) return true;
 
-            bool needGate = SceneNet.Instance.sceneVoteActive || (mod.networkStarted && !mod.IsServer);
-            if (!needGate) return true;
+        var needGate = SceneNet.Instance.sceneVoteActive || (mod.networkStarted && !mod.IsServer);
+        if (!needGate) return true;
 
-            RunAsync(__instance, context).Forget();
-            return false;
-        }
-
-        static async UniTaskVoid RunAsync(LevelManager self, SceneLoadingContext ctx)
-        {
-            var mod = ModBehaviourF.Instance;
-            if (mod == null) return;
-
-            await SceneNet.Instance.Client_SceneGateAsync();
-
-            try
-            {
-                var m = AccessTools.Method(typeof(LevelManager), "InitLevel", new Type[] { typeof(SceneLoadingContext) });
-                if (m != null) m.Invoke(self, new object[] { ctx });
-            }
-            catch (Exception e)
-            {
-                Debug.LogError("[SCENE] StartInit gate -> InitLevel failed: " + e);
-            }
-        }
+        RunAsync(__instance, context).Forget();
+        return false;
     }
 
-    [HarmonyPatch(typeof(MapSelectionEntry), "OnPointerClick")]
-    static class Patch_Mapen_OnPointerClick
+    private static async UniTaskVoid RunAsync(LevelManager self, SceneLoadingContext ctx)
     {
-        static bool Prefix(MapSelectionEntry __instance, PointerEventData eventData)
+        var mod = ModBehaviourF.Instance;
+        if (mod == null) return;
+
+        await SceneNet.Instance.Client_SceneGateAsync();
+
+        try
         {
-            var mod = ModBehaviourF.Instance;
-            if (mod == null || !mod.networkStarted) return true;
-            if (!mod.IsServer) return false;
-            SceneNet.Instance.IsMapSelectionEntry = true;
-            SceneNet.Instance.Host_BeginSceneVote_Simple(__instance.SceneID, "", false, false, false, "OnPointerClick");
-            return false;
+            var m = AccessTools.Method(typeof(LevelManager), "InitLevel", new[] { typeof(SceneLoadingContext) });
+            if (m != null) m.Invoke(self, new object[] { ctx });
+        }
+        catch (Exception e)
+        {
+            Debug.LogError("[SCENE] StartInit gate -> InitLevel failed: " + e);
         }
     }
+}
 
-
-
-
-
-
+[HarmonyPatch(typeof(MapSelectionEntry), "OnPointerClick")]
+internal static class Patch_Mapen_OnPointerClick
+{
+    private static bool Prefix(MapSelectionEntry __instance, PointerEventData eventData)
+    {
+        var mod = ModBehaviourF.Instance;
+        if (mod == null || !mod.networkStarted) return true;
+        if (!mod.IsServer) return false;
+        SceneNet.Instance.IsMapSelectionEntry = true;
+        SceneNet.Instance.Host_BeginSceneVote_Simple(__instance.SceneID, "", false, false, false, "OnPointerClick");
+        return false;
+    }
 }

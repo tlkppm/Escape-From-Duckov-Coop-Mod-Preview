@@ -14,41 +14,37 @@
 // MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
 // GNU Affero General Public License for more details.
 
-﻿using System;
-using System.Collections.Generic;
-using System.Linq;
-using System.Text;
-using System.Threading.Tasks;
+namespace EscapeFromDuckovCoopMod;
 
-namespace EscapeFromDuckovCoopMod
+internal static class HoldVisualBinder
 {
-    internal static class HoldVisualBinder
+    public static void EnsureHeldVisuals(CharacterMainControl cmc)
     {
-        public static void EnsureHeldVisuals(CharacterMainControl cmc)
+        if (!cmc) return;
+        var model = cmc.characterModel;
+        if (!model) return;
+
+        try
         {
-            if (!cmc) return;
-            var model = cmc.characterModel;
-            if (!model) return;
+            // 近战：手持插槽
+            var melee =
+                (model.MeleeWeaponSocket ? model.MeleeWeaponSocket.GetComponentInChildren<ItemAgent_MeleeWeapon>(true) : null)
+                ?? model.GetComponentInChildren<ItemAgent_MeleeWeapon>(true);
+            if (melee && melee.Holder == null) melee.SetHolder(cmc);
 
-            try
-            {
-                // 近战：手持插槽
-                var melee =
-                    (model.MeleeWeaponSocket ? model.MeleeWeaponSocket.GetComponentInChildren<ItemAgent_MeleeWeapon>(true) : null)
-                    ?? model.GetComponentInChildren<ItemAgent_MeleeWeapon>(true);
-                if (melee && melee.Holder == null) melee.SetHolder(cmc);
+            // 右手枪/主手
+            var rGun =
+                (model.RightHandSocket ? model.RightHandSocket.GetComponentInChildren<ItemAgent_Gun>(true) : null)
+                ?? model.GetComponentInChildren<ItemAgent_Gun>(true);
+            if (rGun && rGun.Holder == null) rGun.SetHolder(cmc);
 
-                // 右手枪/主手
-                var rGun =
-                    (model.RightHandSocket ? model.RightHandSocket.GetComponentInChildren<ItemAgent_Gun>(true) : null)
-                    ?? model.GetComponentInChildren<ItemAgent_Gun>(true);
-                if (rGun && rGun.Holder == null) rGun.SetHolder(cmc);
-
-                // 左手（有些道具/双持/灯具）
-                var lGun = model.LefthandSocket ? model.LefthandSocket.GetComponentInChildren<ItemAgent_Gun>(true) : null;
-                if (lGun && lGun.Holder == null) lGun.SetHolder(cmc);
-            }
-            catch { /* 仅做视觉兜底，静默失败即可 */ }
+            // 左手（有些道具/双持/灯具）
+            var lGun = model.LefthandSocket ? model.LefthandSocket.GetComponentInChildren<ItemAgent_Gun>(true) : null;
+            if (lGun && lGun.Holder == null) lGun.SetHolder(cmc);
+        }
+        catch
+        {
+            /* 仅做视觉兜底，静默失败即可 */
         }
     }
 }
